@@ -582,9 +582,10 @@ def simulate_tariff(
             charge_slots = [x for x in lowest if x[0] < 0]
             if len(charge_slots) < 5:
                 charge_slots = lowest[:5]
-            print(
-                "charge slots", [(x[0], x[1].strftime("%H:%M")) for x in charge_slots]
-            )
+            if verbose:
+                print(
+                    "charge slots", [(x[0], x[1].strftime("%H:%M")) for x in charge_slots]
+                )
         else:
             charge_slots = []
         gas_hot_water_saving = 2200 if gas_hot_water else 0
@@ -649,7 +650,8 @@ def simulate_tariff(
                     )
                     / 100
                 )
-                print("export", t1, "is", export_payment)
+                if verbose:
+                    print("export", t1, "is", export_payment)
             else:
                 export_payment = price["export"]
                 if winter_override:
@@ -763,7 +765,8 @@ def simulate_tariff(
                 elif grid_discharge:
                     go = export_payment >= discharge_price_floor
                 if go:
-                    print("grid discharge available at", t, "soc", soc)
+                    if verbose:
+                        print("grid discharge available at", t, "soc", soc)
                     if soc >= discharge_threshold * battery_size:
                         limit = battery_size * discharge_threshold
                         dump_amount = max(
