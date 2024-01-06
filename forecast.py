@@ -1,7 +1,15 @@
+import datetime
+import json
+import matplotlib
+import os.path
+import pprint
+import pysolar
+import random
+import traceback
+import influxdb_client
+import matplotlib.pyplot as plt
 from influxdb_client.client.write_api import SYNCHRONOUS
-import influxdb_client, json, os.path, pprint, datetime, traceback
-import time, pysolar
-from dateutil.parser import isoparse
+
 site = json.load(open(os.path.expanduser("~/src/powerwallextract/site.json")))
 
 t0 = datetime.datetime.strptime('2023-01-01 00:00:00 Z', '%Y-%m-%d %H:%M:%S %z') # start of modelling period
@@ -58,13 +66,6 @@ def json_cache(filename, generate, max_age_days = 7):
     with open(filename, 'w') as fp:
         json.dump(data, fp, indent=2)
     return data
-
-
-
-
-from time import time
-import datetime
-import matplotlib.pyplot as plt
 
 
 def generate_mean_time_of_day():
@@ -139,10 +140,8 @@ plt.scatter([t for t, _ in values], [t.hour+t.minute/60 for t, _ in values], s=[
 
 
 import matplotlib.pyplot as plt
-import numpy as np
 import math
-from time import time
-import datetime, pysolar
+import datetime
 
 azi_resolution =3
 alt_resolution =1
@@ -268,7 +267,6 @@ plt.xlabel('date')
 plt.ylabel('time of day')
 plt.colorbar()
 
-import matplotlib.pyplot as plt
 
 def get_daily_gas_use():
     tback = t0
@@ -328,7 +326,6 @@ def get_daily_gas_use():
 gas_use = json_cache('gas.json', get_daily_gas_use)
 len(gas_use.keys())
 
-import datetime, pysolar, matplotlib, copy, random
 
 latitude  = site['location']['latitude']
 longitude = site['location']['longitude']
