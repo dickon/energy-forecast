@@ -16,7 +16,6 @@ t0 = datetime.datetime.strptime('2023-01-01 00:00:00 Z', '%Y-%m-%d %H:%M:%S %z')
 t1 = datetime.datetime.strptime('2023-12-31 23:59:00 Z', '%Y-%m-%d %H:%M:%S %z') # end of modelling period
 tnow = datetime.datetime.strptime(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S Z'), '%Y-%m-%d %H:%M:%S %z')
 
-agile_incoming_cache = {}
 URL = site['influx']['server']
 
 client = influxdb_client.InfluxDBClient(url=URL, token=site['influx']['token'], org=site['influx']['org'])
@@ -27,7 +26,7 @@ time_string_format = '%Y-%m-%dT%H:%M:%SZ'
 def time_string(dt):
     return dt.strftime(time_string_format)
 
-def do_query(query: str, bucket: str,  t0: datetime.datetime, t1: datetime.datetime, extra:str = "", verbose=False):
+def do_query(query: str, bucket: str,  t0: datetime.datetime, t1: datetime.datetime, extra:str = "", verbose=False, multi=True):
     import time
     fquery = f"""
             {extra}
@@ -47,6 +46,12 @@ def do_query(query: str, bucket: str,  t0: datetime.datetime, t1: datetime.datet
         return []
     if verbose:
         print('results in', delay)
+    if multi:
+        l = []
+        for s in resl:
+            for i in s:
+                l.append(i)
+        return l
     return resl[0]
 
 def json_cache(filename, generate, max_age_days = 7):
@@ -251,7 +256,28 @@ def plot_model(m):
     pow = [ x[1]*2 for x in m]
     return plt.scatter(azimuth,altitude, [x/60 for x in pow], pow)
 
+def get_tariffs():
+    rec = {}
+    for outgoing in [True, False]:
+        productq = 'r["product"] == "AGILE-OUTGOING-BB-23-02-28" or  r["product"] == "AGILE-OUTGOING-19-05-13"' if outgoing else 'r["product"] == "AGILE-FLEX-22-11-25" or r["product"] == "AGILE-BB-23-12-06"'
+        resl = do_query(f"""
+      |> filter(fn: (r) => r["_measurement"] == "unit_cost")
+      |> filter(fn: (r) => r["_field"] == "price")
+      |> filter(fn: (r) => {productq} ) """, 'tariffs', t0, t1, verbose=True, multi=True)
+        for res in resl:
+            t = res['_time']
+            v = res['_value']
+            k = 'agile '+('outgoing' if outgoing else 'incoming')
+            rec.setdefault(k, dict())
+            rec[k][t.isoformat()] = v
+    return rec
 
+tariffs = json_cache('tariffs.json', get_tariffs)
+agile_incoming_cache = {}
+for outgoing in [True, False]:
+    k = 'agile '+('outgoing' if outgoing else 'incoming')
+    for t, value in tariffs[k].items():
+        agile_incoming_cache[(datetime.datetime.fromisoformat(t), outgoing)] = value
 
 plt.figure(figsize=(12,8))
 
@@ -341,7 +367,6 @@ discharge_threshold = 0.48
 discharge_price_floor = 0.27
 discharge_rate_w = 10000
 extra_verbose = False
-verbose=True
 battery_cost_per_wh = battery_cost / battery_lifetime_wh
 print(f'battery cost per kwh=£{battery_cost_per_wh*1e3}')
 
@@ -352,6 +377,8 @@ def get_agile(t, outgoing=False):
     v = agile_incoming_cache.get((t, outgoing))
     if v is not None:
         return v
+    print('miss', t, outgoing)
+    assert 0
     productq = 'r["product"] == "AGILE-OUTGOING-BB-23-02-28" or  r["product"] == "AGILE-OUTGOING-19-05-13"' if outgoing else 'r["product"] == "AGILE-FLEX-22-11-25" or r["product"] == "AGILE-BB-23-12-06"'
     res = do_query(f"""
   |> filter(fn: (r) => r["_measurement"] == "unit_cost")
@@ -361,7 +388,6 @@ def get_agile(t, outgoing=False):
     if extra_verbose:
         print(t,v)
     r = v[0]
-    agile_incoming_cache[(t, outgoing)] = r
     return r * site['tariffs']['agile']['scale']
 
 usage_model = {t:u for (t,u) in mean_time_of_day}
@@ -374,6 +400,8 @@ def simulate_tariff(
         saving_sessions_discharge=False,
         winter_agile_import = False,
         gas_hot_water = False,
+        costs=None, color='grey', verbose=False):
+    if costs is None:
         costs = [
             {
                 'start': 0,
@@ -381,7 +409,7 @@ def simulate_tariff(
                 'import': 0.2793,
                 'export': 0.15,
             },
-        ], color='grey', verbose=False):
+        ]
     if verbose:
         print('run simulation', name)
     kwh_days = []
@@ -500,7 +528,8 @@ def simulate_tariff(
                 if kwh_hh > 0:
                     charge_delta = min(-net_use, (battery_size - soc)/battery_efficiency) if battery else 0
                     soc_delta_charge = min(maximum_charge_rate_watts/2 - soc_delta, charge_delta * battery_efficiency)
-                    print('charge', charge_delta, 'soc delta', soc_delta_charge, 'to deal with', net_use, )
+                    if verbose:
+                        print('charge', charge_delta, 'soc delta', soc_delta_charge, 'to deal with', net_use, )
                     soc_delta += soc_delta_charge
                     assert soc + soc_delta <= battery_size
                     export_kwh =  (- net_use - charge_delta) /1000
@@ -600,7 +629,7 @@ discharge_results = simulate_tariff(name='discharge flux',
                                     costs= site['tariffs']['flux']['kwh_costs'],
                                     grid_charge = True, grid_discharge=True,
                                     battery = True, solar=True,
-                                    color=  'yellow', verbose=True,
+                                    color=  'yellow', verbose=False,
                                     saving_sessions_discharge=True)
 
 current_results = simulate_tariff(name='flux',
@@ -631,7 +660,7 @@ agile_results = simulate_tariff(name='agile',
                                 grid_charge = True,
                                 agile_charge=True,
                                 battery = True, solar=True,
-                                color=  'blue', verbose=True,
+                                color=  'blue', verbose=False,
                                 saving_sessions_discharge=True)
 
 def plot(results_list):
