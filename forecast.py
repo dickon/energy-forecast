@@ -344,6 +344,7 @@ extra_verbose = False
 verbose=True
 battery_cost_per_wh = battery_cost / battery_lifetime_wh
 print(f'battery cost per kwh=£{battery_cost_per_wh*1e3}')
+
 def get_agile(t, outgoing=False):
     if t > tnow:
         t = t.replace(month=9, day = random.randint(1,28))
