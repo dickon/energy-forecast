@@ -606,7 +606,7 @@ def simulate_tariff(
                     kwh_hh = 0 if pos[0] <= 0 else solar_model_table.get(pos, 0)
                     # print('estimated solar production', kwh_hh, 'at',t1, pos)
             if verbose:
-                print(t, "solar position", pos, "solar production", kwh_hh)
+                print(t1, "solar position", pos, "solar production", kwh_hh)
             solar_prod += kwh_hh
             kwh += kwh_hh
             usage_hh = usage_actual.get(t1)
@@ -621,6 +621,7 @@ def simulate_tariff(
             if t1.hour >= 2 and gas_hot_water_saving > 0:
                 discount = min(gas_hot_water_saving, usage_hh - 100)
                 usage_hh -= discount
+                gas_hot_water_saving -= discount
                 if verbose:
                     print(
                         f"gas hot water reduced usage at {t1} by  {discount}Wh to ${usage_hh}"
@@ -672,7 +673,7 @@ def simulate_tariff(
             grid_flow = 0
             soc_delta = 0
             if verbose:
-                print(f"{t1} net use {net_use}Wh")
+                print(f"{t1} net use net use {net_use}Wh (usage={usage_hh}Wh solar={kwh_hh}Wh)")
             if net_use > 0:
                 # we do need energy
                 bat_reserve_limit = battery_size * reserve_threshold
@@ -862,7 +863,7 @@ discharge_results = simulate_tariff(
     battery=True,
     solar=True,
     color="yellow",
-    verbose=False,
+    verbose=True,
     saving_sessions_discharge=True,
 )
 
