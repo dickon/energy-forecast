@@ -541,7 +541,7 @@ usage_model = {t: u for (t, u) in mean_time_of_day}
 
 def simulate_tariff(
     name="unknown",
-    actual=True,
+    actual=False,
     grid_charge=False,
     grid_discharge=False,
     battery=False,
@@ -554,7 +554,17 @@ def simulate_tariff(
     costs=None,
     color="grey",
     verbose=False,
+    start = None,
+    end = None
 ):
+    if start is None:
+        start = datetime.datetime.strptime(
+            "2024-01-01 00:00:00 Z", "%Y-%m-%d %H:%M:%S %z"
+        )
+    if end is None:
+        end = datetime.datetime.strptime(
+            "2025-01-01 00:00:00 Z", "%Y-%m-%d %H:%M:%S %z"
+        )
     if costs is None:
         costs = [
             {
@@ -880,9 +890,8 @@ def simulate_tariff(
             for i in range((end-start).days):
                 day = start+datetime.timedelta(days=i)
                 day_cost =  day_cost_map.get(day, 0)
-                print('consider', day, day_cost)
                 total += day_cost
-            print('bill',start,end,'expected', bill['total'], 'actual', total)
+            print(name, 'bill',start,end,'expected', bill['total'], 'actual', total)
     prev = 0
     month_cost = [0] * 12
     months = []
@@ -910,7 +919,8 @@ def simulate_tariff(
         "months": months,
     }
 
-actual_results = simulate_tariff(name='actual', actual=True, verbose=False)
+actual_results = simulate_tariff(name='actual', actual=True, verbose=False,
+                                 start=t0, end=t1)
 
 old_results = simulate_tariff(
     name="flexible no solar no batteries", gas_hot_water=True, verbose=False
