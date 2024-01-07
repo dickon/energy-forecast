@@ -526,6 +526,7 @@ usage_model = {t: u for (t, u) in mean_time_of_day}
 
 def simulate_tariff(
     name="unknown",
+    actual=True,
     grid_charge=False,
     grid_discharge=False,
     battery=False,
@@ -551,13 +552,13 @@ def simulate_tariff(
     if verbose:
         print("run simulation", name)
     kwh_days = []
-    days = []
     soc = battery_size if battery else 0
 
     cost = 0
     cost_series = []
     solar_prod = 0
     days = []
+    day_cost_map = {}
     halfhours = []
     soc_series = []
     solar_output_w_count = 0
@@ -568,9 +569,10 @@ def simulate_tariff(
     for day in range(365):
         if verbose:
             print("day", day)
+        tday = t + datetime.timedelta(days=day)
+        gas_hot_water_saving_active = gas_hot_water and tday.month >= 3
         kwh = 0
         day_cost = 0
-        tday = t + datetime.timedelta(days=day)
         min_soc = soc
         soc_daily = []
         slots = [tday + datetime.timedelta(minutes=x * 30) for x in range(48)]
@@ -588,7 +590,7 @@ def simulate_tariff(
                 )
         else:
             charge_slots = []
-        gas_hot_water_saving = 2200 if gas_hot_water else 0
+        gas_hot_water_saving = 2200 if gas_hot_water_saving_active else 0
         for hh in range(48):
             hh_count += 1
             t1 = tday + datetime.timedelta(minutes=hh * 30)
@@ -659,7 +661,7 @@ def simulate_tariff(
                     export_payment = 0.15
             if hh == 0:
                 gas_kwh_day = gas_use.get(tday.strftime("%Y-%m-%d"), 0) / 1000 + (
-                    10 if gas_hot_water else 0
+                    10 if gas_hot_water_saving_active else 0
                 )
                 gas_cost = (
                     site["tariffs"]["gas"]["standing_charge"]
@@ -824,6 +826,19 @@ def simulate_tariff(
         kwh_days.append(kwh)
         cost_series.append(cost)
         day_costs.append(day_cost)
+        day_cost_map[tday.date()] = day_cost
+
+    if actual:
+        for bill in site['bills']:
+            start = datetime.datetime.strptime(bill['start'], '%Y-%m-%d').date()
+            end = datetime.datetime.strptime(bill['end'], '%Y-%m-%d').date()
+            total = 0
+            for i in range((end-start).days):
+                day = start+datetime.timedelta(days=i)
+                day_cost =  day_cost_map.get(day, 0)
+                print('consider', day, day_cost)
+                total += day_cost
+            print('bill',start,end,'expected', bill['total'], 'actual', total)
     prev = 0
     month_cost = [0] * 12
     months = []
@@ -851,6 +866,7 @@ def simulate_tariff(
         "months": months,
     }
 
+actual_results = simulate_tariff(name='actual', actual=True, verbose=True)
 
 old_results = simulate_tariff(
     name="flexible no solar no batteries", gas_hot_water=True, verbose=False
@@ -863,7 +879,7 @@ discharge_results = simulate_tariff(
     battery=True,
     solar=True,
     color="yellow",
-    verbose=True,
+    verbose=False,
     saving_sessions_discharge=True,
 )
 
