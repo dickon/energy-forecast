@@ -593,10 +593,11 @@ def simulate_tariff(
     hh_count = 0
     soc_daily_lows = []
     day_costs = []
-    gas_sc_cost = None
-    gas_kwh_cost = None
+
     t = t0
     for day in range(365):
+        gas_sc_cost = None
+        gas_kwh_cost = None
         if verbose:
             print("day", day)
         tday = t + datetime.timedelta(days=day)
@@ -604,6 +605,7 @@ def simulate_tariff(
         for tariff in site['tariff_history']:
             tstart = datetime.datetime.strptime(tariff['start'], '%Y-%m-%d')
             tend = datetime.datetime.strptime(tariff['end'], '%Y-%m-%d')
+            gname = 'gas latest'
             if tday.date() >= tstart.date() and tday.date() <= tend.date():
                 tname = tariff.get('electricity_tariff')
                 gname = tariff.get('gas_tariff')
@@ -646,7 +648,9 @@ def simulate_tariff(
             gas_sc_cost = gas_cache[(False, tday.strptime('%Y-%m-%d'))]
         if gas_kwh_cost is None:
             gas_kwh_cost = gas_cache[(True, tday.strptime('%Y-%m-%d'))]
-
+        electricity_import_cost = 0
+        gas_import_cost = 0
+        electricity_export_cost = 0
         gas_hot_water_saving = 2200 if gas_hot_water_saving_active else 0
         for hh in range(48):
             hh_count += 1
@@ -721,6 +725,7 @@ def simulate_tariff(
                     10 if gas_hot_water_saving_active else 0
                 )
                 gas_cost = ( gas_sc_cost + gas_kwh_day * gas_kwh_cost)
+                gas_import_cost += gas_cost
                 if verbose:
                     print(f"{t1} gas use {gas_kwh_day}kWh, cost £${gas_cost:.2f}")
             else:
@@ -743,6 +748,7 @@ def simulate_tariff(
                 if verbose:
                     print(f"{t1} taking ${grid_flow}Wh from grid")
                 hh_cost += import_cost * grid_flow / 1000
+                electricity_import_cost += import_cost * grid_flow / 1000
             else:
                 # we have spare energy
                 if kwh_hh > 0:
@@ -773,6 +779,7 @@ def simulate_tariff(
                 grid_flow = -export_kwh * 1000
                 assert export_kwh >= 0
                 hh_cost -= export_kwh * export_payment
+                electricity_export_cost -= export_kwh * export_payment
             if agile_charge:
                 grid_charge_now = t1 in [x[1] for x in charge_slots] and (
                     soc > battery_size * 0.5 and import_cost > 0.1
@@ -880,18 +887,28 @@ def simulate_tariff(
         kwh_days.append(kwh)
         cost_series.append(cost)
         day_costs.append(day_cost)
-        day_cost_map[tday.date()] = day_cost
+
+        day_cost_map[tday.date()] = {'electricity_import_cost':electricity_import_cost, 'gas_import_cost':gas_import_cost, "electricity_export_cost":electricity_export_cost}
 
     if actual:
         for bill in site['bills']:
             start = datetime.datetime.strptime(bill['start'], '%Y-%m-%d').date()
             end = datetime.datetime.strptime(bill['end'], '%Y-%m-%d').date()
             total = 0
+            day_cost = {}
+            if 'total' not in bill:
+                bill['total'] = bill['electricity_import_cost'] + bill['gas_import_cost'] + bill['electricity_export_cost']
             for i in range((end-start).days):
                 day = start+datetime.timedelta(days=i)
-                day_cost =  day_cost_map.get(day, 0)
-                total += day_cost
-            print(name, 'bill',start,end,'expected', bill['total'], 'actual', total)
+                print(day, day_cost_map[day])
+                for field, x in day_cost_map.get(day, {}).items():
+                    day_cost.setdefault(field, 0)
+                    day_cost[field] += x
+                    total += day_cost[field]
+            print(name, 'bill',start,end)
+            for field in day_cost:
+                print('\tfor '+field)
+                print('\t\texpected', bill.get(field), 'actual', day_cost[field])
     prev = 0
     month_cost = [0] * 12
     months = []
@@ -920,7 +937,7 @@ def simulate_tariff(
     }
 
 actual_results = simulate_tariff(name='actual', actual=True, verbose=False,
-                                 start=t0, end=t1)
+                                 start=t0, end=t1, saving_sessions_discharge=True, solar=True)
 
 old_results = simulate_tariff(
     name="flexible no solar no batteries", gas_hot_water=True, verbose=False
