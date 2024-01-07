@@ -570,6 +570,25 @@ def simulate_tariff(
         if verbose:
             print("day", day)
         tday = t + datetime.timedelta(days=day)
+        if actual:
+            found = None
+            for tariff in site['tariff_history']:
+                tstart = datetime.datetime.strptime(tariff['start'], '%Y-%m-%d')
+                tend = datetime.datetime.strptime(tariff['end'], '%Y-%m-%d')
+                if tday.date() >= tstart.date() and tday.date() <= tend.date():
+                    tname = tariff['electricity_tariff']
+                    costs = [
+                        {
+                            "start":0,
+                            "end": 24,
+                            "import": site['tariffs'][tname]['kwh_costs']['import'],
+                            "export": site['tariffs'][tname]['kwh_costs']['export']
+                        }
+                    ]
+                    found = tariff['electricity_tariff']
+            if found:
+                print('using actual tariff', found)
+
         gas_hot_water_saving_active = gas_hot_water and tday.month >= 3
         kwh = 0
         day_cost = 0
