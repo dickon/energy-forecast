@@ -369,15 +369,50 @@ def get_tariffs():
             k = "agile " + ("outgoing" if outgoing else "incoming")
             rec.setdefault(k, dict())
             rec[k][t.isoformat()] = v
+    gas_res = do_query(
+        f"""
+      |> filter(fn: (r) => r["_measurement"] == "unit_cost")
+      |> filter(fn: (r) => r["fuel"] == "gas")
+      |> filter(fn: (r) => r["product"] == "VAR-22-11-01")""",
+        "tariffs",
+        t0,
+        t1,
+        verbose=True)
+    for res in gas_res:
+        t = res["_time"]
+        v = res["_value"]
+        rec.setdefault('gas', dict())
+
+        rec['gas'][t.date().strftime('%Y-%m-%d')] = v
+    gas_sc = do_query(
+    f"""
+      |> filter(fn: (r) => r["_measurement"] == "standing_charge")
+      |> filter(fn: (r) => r["fuel"] == "gas")
+      |> filter(fn: (r) => r["product"] == "VAR-22-11-01")""",
+    "tariffs",
+    t0,
+    t1,
+    verbose=True)
+    for res in gas_sc:
+        t = res["_time"]
+        v =  res["_value"]
+        rec.setdefault('gas standing', dict())
+        rec['gas standing'][t.date().strftime('%Y-%m-%d')] = v
+
     return rec
 
 
 tariffs = json_cache("tariffs.json", get_tariffs)
 agile_incoming_cache = {}
+gas_cache = {}
 for outgoing in [True, False]:
     k = "agile " + ("outgoing" if outgoing else "incoming")
     for t, value in tariffs[k].items():
         agile_incoming_cache[(datetime.datetime.fromisoformat(t), outgoing)] = value
+for t, value in tariffs['gas'].items():
+    gas_cache[(True, datetime.datetime.fromisoformat(t))] = value
+for t, value in tariffs['gas standing'].items():
+    gas_cache[(False, datetime.datetime.fromisoformat(t))] = value
 
 plt.figure(figsize=(12, 8))
 
@@ -499,26 +534,6 @@ def get_agile(t, outgoing=False):
     if v is not None:
         return v
     print("miss", t, outgoing)
-    assert 0
-    productq = (
-        'r["product"] == "AGILE-OUTGOING-BB-23-02-28" or  r["product"] == "AGILE-OUTGOING-19-05-13"'
-        if outgoing
-        else 'r["product"] == "AGILE-FLEX-22-11-25" or r["product"] == "AGILE-BB-23-12-06"'
-    )
-    res = do_query(
-        f"""
-  |> filter(fn: (r) => r["_measurement"] == "unit_cost")
-  |> filter(fn: (r) => r["_field"] == "price")
-  |> filter(fn: (r) => {productq} )  |> last() """,
-        "tariffs",
-        t,
-        t + datetime.timedelta(minutes=29),
-    )
-    v = [x["_value"] for x in res]
-    if extra_verbose:
-        print(t, v)
-    r = v[0]
-    return r * site["tariffs"]["agile"]["scale"]
 
 
 usage_model = {t: u for (t, u) in mean_time_of_day}
@@ -549,6 +564,9 @@ def simulate_tariff(
                 "export": 0.15,
             },
         ]
+
+    gas_kwh_cost = None
+    gas_sc_cost = None
     if verbose:
         print("run simulation", name)
     kwh_days = []
@@ -565,18 +583,21 @@ def simulate_tariff(
     hh_count = 0
     soc_daily_lows = []
     day_costs = []
+    gas_sc_cost = None
+    gas_kwh_cost = None
     t = t0
     for day in range(365):
         if verbose:
             print("day", day)
         tday = t + datetime.timedelta(days=day)
-        if actual:
-            found = None
-            for tariff in site['tariff_history']:
-                tstart = datetime.datetime.strptime(tariff['start'], '%Y-%m-%d')
-                tend = datetime.datetime.strptime(tariff['end'], '%Y-%m-%d')
-                if tday.date() >= tstart.date() and tday.date() <= tend.date():
-                    tname = tariff['electricity_tariff']
+        found = None
+        for tariff in site['tariff_history']:
+            tstart = datetime.datetime.strptime(tariff['start'], '%Y-%m-%d')
+            tend = datetime.datetime.strptime(tariff['end'], '%Y-%m-%d')
+            if tday.date() >= tstart.date() and tday.date() <= tend.date():
+                tname = tariff.get('electricity_tariff')
+                gname = tariff.get('gas_tariff')
+                if actual and tname:
                     costs = [
                         {
                             "start":0,
@@ -585,9 +606,11 @@ def simulate_tariff(
                             "export": site['tariffs'][tname]['kwh_costs']['export']
                         }
                     ]
-                    found = tariff['electricity_tariff']
-            if found:
-                print('using actual tariff', found)
+                    found = tname
+            gas_kwh_cost = site['tariffs'][gname]['kwh_costs']['import']
+            gas_sc_cost = site['tariffs'][gname]['standing']
+            if found and verbose:
+                print('prevailing electricity tariff', found, 'to', tday)
 
         gas_hot_water_saving_active = gas_hot_water and tday.month >= 3
         kwh = 0
@@ -609,6 +632,11 @@ def simulate_tariff(
                 )
         else:
             charge_slots = []
+        if gas_sc_cost is None:
+            gas_sc_cost = gas_cache[(False, tday.strptime('%Y-%m-%d'))]
+        if gas_kwh_cost is None:
+            gas_kwh_cost = gas_cache[(True, tday.strptime('%Y-%m-%d'))]
+
         gas_hot_water_saving = 2200 if gas_hot_water_saving_active else 0
         for hh in range(48):
             hh_count += 1
@@ -682,10 +710,7 @@ def simulate_tariff(
                 gas_kwh_day = gas_use.get(tday.strftime("%Y-%m-%d"), 0) / 1000 + (
                     10 if gas_hot_water_saving_active else 0
                 )
-                gas_cost = (
-                    site["tariffs"]["gas"]["standing_charge"]
-                    + gas_kwh_day * site["tariffs"]["gas"]["kwh_cost"]
-                )
+                gas_cost = ( gas_sc_cost + gas_kwh_day * gas_kwh_cost)
                 if verbose:
                     print(f"{t1} gas use {gas_kwh_day}kWh, cost £${gas_cost:.2f}")
             else:
@@ -771,8 +796,8 @@ def simulate_tariff(
                 soc_delta += add
             export_payment_bonus = 0
             if grid_discharge or saving_sessions_discharge:
-                if saving_sessions_discharge and t1.month in [12, 1, 2]:
-                    # print('eval', t1.month, t1.day, t1.hour, t1.minute)
+                go = False
+                if saving_sessions_discharge and (t1.month == 12 and t1.year == 2023) or (t1.month in [1, 2] and t1.year==2024):
                     go = (
                         t1.month in [12, 1, 2]
                         and t1.day in [7, 14, 21]
@@ -885,7 +910,7 @@ def simulate_tariff(
         "months": months,
     }
 
-actual_results = simulate_tariff(name='actual', actual=True, verbose=True)
+actual_results = simulate_tariff(name='actual', actual=True, verbose=False)
 
 old_results = simulate_tariff(
     name="flexible no solar no batteries", gas_hot_water=True, verbose=False
