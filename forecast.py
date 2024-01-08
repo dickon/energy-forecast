@@ -527,12 +527,14 @@ print(f"battery cost per kwh=£{battery_cost_per_wh*1e3}")
 
 
 def get_agile(t, outgoing=False):
-    if t > tnow:
-        t = t.replace(month=9, day=random.randint(1, 28))
+    y = t.year - 2023
+    if y > 0 :
+        markup = site['tariffs']['agile']['scale']**y
+        t = t.replace(year=2023)
 
     v = agile_incoming_cache.get((t, outgoing))
     if v is not None:
-        return v
+        return v*markup
     print("miss", t, outgoing)
 
 
@@ -597,9 +599,12 @@ def simulate_tariff(
     for day in range((end - start).days):
         gas_sc_cost = None
         gas_kwh_cost = None
-        if verbose:
-            print("day", day)
         tday = t + datetime.timedelta(days=day)
+        if tday.month >= 11:
+            verbose=True
+        if verbose:
+            print("day", day, tday)
+
         battery_today = battery and tday >= battery_commision_date
         found = None
         for tariff in site['tariff_history']:
@@ -926,6 +931,7 @@ def simulate_tariff(
 
     return {
         "month_cost": month_cost,
+        "day_cost_map":day_cost_map,
         "annual cost": cost_series[-1],
         "name": name,
         "soc_daily_lows": soc_daily_lows,
@@ -936,8 +942,22 @@ def simulate_tariff(
         "months": months,
     }
 
+
+def plot_days(results):
+    m = results['day_cost_map']
+    days = sorted(m.keys())
+    plt.figure(figsize=(12, 8))
+    for k in ['electricity_import_cost', 'gas_import_cost',
+              'electricity_export_cost']:
+        plt.plot(days,[m[d][k] for d in days])
+    plt.title(results['name'])
+    plt.show()
+    return plt
+
 actual_results = simulate_tariff(name='actual', actual=True, verbose=False,
                                  start=t0, end=t1, saving_sessions_discharge=True, solar=True)
+
+plot_days(actual_results)
 
 old_results = simulate_tariff(
     name="flexible no solar no batteries", gas_hot_water=True, verbose=False, battery=False, solar=False
