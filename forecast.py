@@ -530,6 +530,8 @@ def get_agile(t, outgoing=False):
     y = t.year - 2023
     if y > 0 :
         markup = site['tariffs']['agile']['scale']**y
+        if t.day == 29 and t.month == 2:
+            t = t.replace(day=28)
         t = t.replace(year=2023)
 
     v = agile_incoming_cache.get((t, outgoing))
@@ -615,14 +617,14 @@ def simulate_tariff(
                 tname = tariff.get('electricity_tariff')
                 gname = tariff.get('gas_tariff')
                 if actual and tname:
-                    costs = [
-                        {
-                            "start":0,
-                            "end": 24,
-                            "import": site['tariffs'][tname]['kwh_costs']['import'],
-                            "export": site['tariffs'][tname]['kwh_costs']['export']
-                        }
-                    ]
+                    costs = []
+                    for period in site['tariffs'][tname]['kwh_costs']:
+                        costs.append({
+                            "start":period['start'],
+                            "end": period['end'],
+                            "import": period['import'],
+                            "export": period['export']
+                        })
                     found = tname
             gas_kwh_cost = site['tariffs'][gname]['kwh_costs']['import']
             gas_sc_cost = site['tariffs'][gname]['standing']
@@ -634,6 +636,7 @@ def simulate_tariff(
         day_cost = 0
         min_soc = soc
         soc_daily = []
+        solar_today = 0
         slots = [tday + datetime.timedelta(minutes=x * 30) for x in range(48)]
         if agile_charge:
             agile_series = [(get_agile(x), x) for x in slots]
@@ -676,6 +679,7 @@ def simulate_tariff(
             if verbose:
                 print(t1, "solar position", pos, "solar production", kwh_hh)
             solar_prod += kwh_hh
+            solar_today += kwh_hh
             kwh += kwh_hh
             usage_hh = usage_actual.get(t1)
             usage_real = True
@@ -893,7 +897,8 @@ def simulate_tariff(
         cost_series.append(cost)
         day_costs.append(day_cost)
 
-        day_cost_map[tday.date()] = {'electricity_import_cost':electricity_import_cost, 'gas_import_cost':gas_import_cost, "electricity_export_cost":electricity_export_cost}
+        day_cost_map[tday.date()] = {'electricity_import_cost':electricity_import_cost, 'gas_import_cost':gas_import_cost, "electricity_export_cost":electricity_export_cost,
+                                     "solar_production": solar_today/1000}
 
     if actual:
         for bill in site['bills']:
@@ -948,8 +953,10 @@ def plot_days(results):
     days = sorted(m.keys())
     plt.figure(figsize=(12, 8))
     for k in ['electricity_import_cost', 'gas_import_cost',
-              'electricity_export_cost']:
-        plt.plot(days,[m[d][k] for d in days])
+              'electricity_export_cost',
+              #'solar_production'
+              ]:
+        plt.plot(days,[m[d][k] for d in days], label=k)
     plt.title(results['name'])
     plt.show()
     return plt
