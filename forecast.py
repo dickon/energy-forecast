@@ -544,8 +544,8 @@ def simulate_tariff(
     actual=False,
     grid_charge=False,
     grid_discharge=False,
-    battery=False,
-    solar=False,
+    battery=True,
+    solar=True,
     standing=0.4201,
     agile_charge=False,
     saving_sessions_discharge=False,
@@ -574,11 +574,10 @@ def simulate_tariff(
                 "export": 0.15,
             },
         ]
-
     gas_kwh_cost = None
     gas_sc_cost = None
     if verbose:
-        print("run simulation", name)
+        print("run simulation", name)x
     kwh_days = []
     soc = battery_size if battery else 0
 
@@ -593,7 +592,7 @@ def simulate_tariff(
     hh_count = 0
     soc_daily_lows = []
     day_costs = []
-
+    battery_commision_date = datetime.datetime.strptime(site['powerwall']['commission_date'], '%Y-%m-%d %H:%M:%S %z')
     t = t0
     for day in range(365):
         gas_sc_cost = None
@@ -601,6 +600,7 @@ def simulate_tariff(
         if verbose:
             print("day", day)
         tday = t + datetime.timedelta(days=day)
+        battery_today = battery and tday >= battery_commision_date
         found = None
         for tariff in site['tariff_history']:
             tstart = datetime.datetime.strptime(tariff['start'], '%Y-%m-%d')
@@ -740,7 +740,7 @@ def simulate_tariff(
                 bat_reserve_limit = battery_size * reserve_threshold
                 charge_add = (
                     min(net_use, soc - bat_reserve_limit, maximum_charge_rate_watts / 2)
-                    if battery
+                    if battery_today
                     else 0
                 )
                 grid_flow = net_use - charge_add
@@ -754,7 +754,7 @@ def simulate_tariff(
                 if kwh_hh > 0:
                     charge_delta = (
                         min(-net_use, (battery_size - soc) / battery_efficiency)
-                        if battery
+                        if battery_today
                         else 0
                     )
                     soc_delta_charge = min(
@@ -905,7 +905,7 @@ def simulate_tariff(
                     day_cost.setdefault(field, 0)
                     day_cost[field] += x
                     total += day_cost[field]
-            print(name, 'bill',start,end)
+            print(f'Bill from {start} to {end}')
             for field in day_cost:
                 print('\tfor '+field)
                 print('\t\texpected', bill.get(field), 'actual', day_cost[field])
@@ -936,11 +936,11 @@ def simulate_tariff(
         "months": months,
     }
 
-actual_results = simulate_tariff(name='actual', actual=True, verbose=False,
+actual_results = simulate_tariff(name='actual', actual=True, verbose=True,
                                  start=t0, end=t1, saving_sessions_discharge=True, solar=True)
 
 old_results = simulate_tariff(
-    name="flexible no solar no batteries", gas_hot_water=True, verbose=False
+    name="flexible no solar no batteries", gas_hot_water=True, verbose=False, battery=False, solar=False
 )
 discharge_results = simulate_tariff(
     name="discharge flux",
