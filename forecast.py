@@ -577,7 +577,7 @@ def simulate_tariff(
     gas_kwh_cost = None
     gas_sc_cost = None
     if verbose:
-        print("run simulation", name)x
+        print("run simulation", name)
     kwh_days = []
     soc = battery_size if battery else 0
 
@@ -593,8 +593,8 @@ def simulate_tariff(
     soc_daily_lows = []
     day_costs = []
     battery_commision_date = datetime.datetime.strptime(site['powerwall']['commission_date'], '%Y-%m-%d %H:%M:%S %z')
-    t = t0
-    for day in range(365):
+    t = start
+    for day in range((end - start).days):
         gas_sc_cost = None
         gas_kwh_cost = None
         if verbose:
@@ -936,7 +936,7 @@ def simulate_tariff(
         "months": months,
     }
 
-actual_results = simulate_tariff(name='actual', actual=True, verbose=True,
+actual_results = simulate_tariff(name='actual', actual=True, verbose=False,
                                  start=t0, end=t1, saving_sessions_discharge=True, solar=True)
 
 old_results = simulate_tariff(
