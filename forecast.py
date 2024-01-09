@@ -404,15 +404,15 @@ def get_tariffs():
 
 tariffs = json_cache("tariffs.json", get_tariffs)
 agile_incoming_cache = {}
-gas_cache = {}
+gas_tariffs_cache = {}
 for outgoing in [True, False]:
     k = "agile " + ("outgoing" if outgoing else "incoming")
     for t, value in tariffs[k].items():
         agile_incoming_cache[(datetime.datetime.fromisoformat(t), outgoing)] = value
 for t, value in tariffs['gas'].items():
-    gas_cache[(True, datetime.datetime.fromisoformat(t))] = value
+    gas_tariffs_cache[(True, datetime.datetime.fromisoformat(t))] = value
 for t, value in tariffs['gas standing'].items():
-    gas_cache[(False, datetime.datetime.fromisoformat(t))] = value
+    gas_tariffs_cache[(False, datetime.datetime.fromisoformat(t))] = value
 
 plt.figure(figsize=(12, 8))
 
@@ -489,8 +489,6 @@ def get_daily_gas_use():
             extra='import "math"',
         )
 
-        for outt in temp:
-            pass
         if row["_value"] > 0:
             age_series.append((tnow - row["_time"]).days)
             t_series.append(outt["_value"])
@@ -505,7 +503,6 @@ def get_daily_gas_use():
 
 
 gas_use = json_cache("gas.json", get_daily_gas_use)
-len(gas_use.keys())
 
 
 latitude = site["location"]["latitude"]
@@ -555,7 +552,7 @@ def simulate_tariff(
     saving_sessions_discharge=False,
     winter_agile_import=False,
     gas_hot_water=False,
-    costs=None,
+    electricity_costs=None,
     color="grey",
     verbose=False,
     start = None,
@@ -569,8 +566,8 @@ def simulate_tariff(
         end = datetime.datetime.strptime(
             "2025-01-01 00:00:00 Z", "%Y-%m-%d %H:%M:%S %z"
         )
-    if costs is None:
-        costs = [
+    if electricity_costs is None:
+        electricity_costs = [
             {
                 "start": 0,
                 "end": 24,
@@ -578,8 +575,6 @@ def simulate_tariff(
                 "export": 0.15,
             },
         ]
-    gas_kwh_cost = None
-    gas_sc_cost = None
     if verbose:
         print("run simulation", name)
     kwh_days = []
@@ -599,37 +594,16 @@ def simulate_tariff(
     battery_commision_date = datetime.datetime.strptime(site['powerwall']['commission_date'], '%Y-%m-%d %H:%M:%S %z')
     t = start
     for day in range((end - start).days):
-        gas_sc_cost = None
-        gas_kwh_cost = None
-        tday = t + datetime.timedelta(days=day)
-        if tday.month >= 11:
-            verbose=True
-        if verbose:
-            print("day", day, tday)
 
+        tday = t + datetime.timedelta(days=day)
+        tmodel = map_to_model_date(tday)
+        if 'discharge' in name and day > 400: verbose=True
+        if verbose:
+            print("day", day, tday, 'equivalent day in modelling period',tmodel)
         battery_today = battery and tday >= battery_commision_date
-        found = None
-        for tariff in site['tariff_history']:
-            tstart = datetime.datetime.strptime(tariff['start'], '%Y-%m-%d')
-            tend = datetime.datetime.strptime(tariff['end'], '%Y-%m-%d')
-            gname = 'gas latest'
-            if tday.date() >= tstart.date() and tday.date() <= tend.date():
-                tname = tariff.get('electricity_tariff')
-                gname = tariff.get('gas_tariff')
-                if actual and tname:
-                    costs = []
-                    for period in site['tariffs'][tname]['kwh_costs']:
-                        costs.append({
-                            "start":period['start'],
-                            "end": period['end'],
-                            "import": period['import'],
-                            "export": period['export']
-                        })
-                    found = tname
-            gas_kwh_cost = site['tariffs'][gname]['kwh_costs']['import']
-            gas_sc_cost = site['tariffs'][gname]['standing']
-            if found and verbose:
-                print('prevailing electricity tariff', found, 'to', tday)
+
+        electricity_costs_today, gas_kwh_cost, gas_sc_cost = work_out_electricity_costs_today(actual, electricity_costs,
+                                                                                              tday, verbose)
 
         gas_hot_water_saving_active = gas_hot_water and tday.month >= 3
         kwh = 0
@@ -653,9 +627,9 @@ def simulate_tariff(
         else:
             charge_slots = []
         if gas_sc_cost is None:
-            gas_sc_cost = gas_cache[(False, tday.strptime('%Y-%m-%d'))]
+            gas_sc_cost = gas_tariffs_cache[(False, tday.strptime('%Y-%m-%d'))]
         if gas_kwh_cost is None:
-            gas_kwh_cost = gas_cache[(True, tday.strptime('%Y-%m-%d'))]
+            gas_kwh_cost = gas_tariffs_cache[(True, tday.strptime('%Y-%m-%d'))]
         electricity_import_cost = 0
         gas_import_cost = 0
         electricity_export_cost = 0
@@ -704,10 +678,10 @@ def simulate_tariff(
                 print(f"{t1} net electrical requirement {net_use}Wh")
             price_matches = [
                 price
-                for price in costs
+                for price in electricity_costs_today
                 if t1.hour >= price["start"] and t1.hour < price["end"]
             ]
-            assert len(price_matches) == 1, (price_matches, name, t1, costs)
+            assert len(price_matches) == 1, (price_matches, name, t1, electricity_costs_today)
             price = price_matches[0]
             if verbose:
                 print(f"{t1} price structure {price}")
@@ -730,7 +704,7 @@ def simulate_tariff(
                 if winter_override:
                     export_payment = 0.15
             if hh == 0:
-                gas_kwh_day = gas_use.get(tday.strftime("%Y-%m-%d"), 0) / 1000 + (
+                gas_kwh_day = gas_use.get(tmodel.strftime("%Y-%m-%d"), 0) / 1000 + (
                     10 if gas_hot_water_saving_active else 0
                 )
                 gas_cost = ( gas_sc_cost + gas_kwh_day * gas_kwh_cost)
@@ -926,13 +900,13 @@ def simulate_tariff(
         if day.day == 14:
             months.append(day)
         month_cost[day.month - 1] += cost
-    month_cost = month_cost[: len(months)]
-    assert len(months) == len(month_cost), (
-        len(months),
-        len(month_cost),
-        months,
-        month_cost,
-    )
+    # month_cost = month_cost[: len(months)]
+    # assert len(months) == len(month_cost), (
+    #     len(months),
+    #     len(month_cost),
+    #     months,
+    #     month_cost,
+    # )
 
     return {
         "month_cost": month_cost,
@@ -946,6 +920,45 @@ def simulate_tariff(
         "days": days,
         "months": months,
     }
+
+
+def map_to_model_date(tday):
+    tday2 = tday
+    if tday2.day == 29 and tday2.month == 2:
+        tday2 = tday2.replace(day=28)
+    tmodel = tday2.replace(year=2023)
+    return tmodel
+
+
+def work_out_electricity_costs_today(actual, electricity_costs, tday, verbose):
+    gas_sc_cost = None
+    gas_kwh_cost = None
+    found = None
+    electricity_costs_today = electricity_costs
+    for tariff in site['tariff_history']:
+        tstart = datetime.datetime.strptime(tariff['start'], '%Y-%m-%d')
+        tend = datetime.datetime.strptime(tariff['end'], '%Y-%m-%d')
+        gname = 'gas latest'
+        if tday.date() >= tstart.date() and tday.date() <= tend.date():
+            tname = tariff.get('electricity_tariff')
+            gname = tariff.get('gas_tariff')
+            if actual and tname:
+                electricity_costs_today = []
+                for period in site['tariffs'][tname]['kwh_costs']:
+                    electricity_costs_today.append({
+                        "start": period['start'],
+                        "end": period['end'],
+                        "import": period['import'],
+                        "export": period['export']
+                    })
+                found = tname
+        gas_kwh_cost = site['tariffs'][gname]['kwh_costs']['import']
+        gas_sc_cost = site['tariffs'][gname]['standing']
+    if verbose:
+        print(f'{tday}: electricity tariff={electricity_costs_today} gas sc={gas_sc_cost} kwh={gas_kwh_cost}')
+        if found and verbose:
+            print('prevailing electricity tariff', found, 'to', tday)
+    return electricity_costs_today, gas_kwh_cost, gas_sc_cost
 
 
 def plot_days(results):
@@ -963,15 +976,14 @@ def plot_days(results):
 
 actual_results = simulate_tariff(name='actual', actual=True, verbose=False,
                                  start=t0, end=t1, saving_sessions_discharge=True, solar=True)
-
-plot_days(actual_results)
+#plot_days(actual_results)
 
 old_results = simulate_tariff(
     name="flexible no solar no batteries", gas_hot_water=True, verbose=False, battery=False, solar=False
 )
 discharge_results = simulate_tariff(
     name="discharge flux",
-    costs=site["tariffs"]["flux"]["kwh_costs"],
+    electricity_costs=site["tariffs"]["flux"]["kwh_costs"],
     grid_charge=True,
     grid_discharge=True,
     battery=True,
@@ -979,11 +991,13 @@ discharge_results = simulate_tariff(
     color="yellow",
     verbose=False,
     saving_sessions_discharge=True,
+    start=t0,
 )
+plot_days(discharge_results)
 
 current_results = simulate_tariff(
     name="flux",
-    costs=site["tariffs"]["flux"]["kwh_costs"],
+    electricity_costs=site["tariffs"]["flux"]["kwh_costs"],
     grid_charge=True,
     battery=True,
     solar=True,
@@ -993,7 +1007,7 @@ current_results = simulate_tariff(
 )
 winter_agile_result = simulate_tariff(
     name="winter agile",
-    costs=site["tariffs"]["flux"]["kwh_costs"],
+    electricity_costs=site["tariffs"]["flux"]["kwh_costs"],
     winter_agile_import=True,
     grid_charge=True,
     agile_charge=True,
@@ -1006,7 +1020,7 @@ winter_agile_result = simulate_tariff(
 
 agile_results = simulate_tariff(
     name="agile",
-    costs=[
+    electricity_costs=[
         {
             "start": 0,
             "end": 24,
@@ -1039,7 +1053,7 @@ def plot(results_list):
         if [x for x in r["kwh_days"] if x > 0]:
             ax3.plot(r["days"], r["kwh_days"])
         ax3.set_ylabel("solar production, Wh")
-        ax4.plot(r["months"], r["month_cost"], color=r["color"], label=r["name"])
+        #ax4.plot(r["months"], r["month_cost"], color=r["color"], label=r["name"])
         ax4.set_ylabel("monthly cost, £")
         print("plan", r["name"], r["cost_series"][-1])
 
