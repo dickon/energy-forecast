@@ -594,7 +594,6 @@ def simulate_tariff(
     battery_commision_date = datetime.datetime.strptime(site['powerwall']['commission_date'], '%Y-%m-%d %H:%M:%S %z')
     t = start
     for day in range((end - start).days):
-
         tday = t + datetime.timedelta(days=day)
         tmodel = map_to_model_date(tday)
         if 'discharge' in name and day > 400: verbose=True
@@ -602,8 +601,8 @@ def simulate_tariff(
             print("day", day, tday, 'equivalent day in modelling period',tmodel)
         battery_today = battery and tday >= battery_commision_date
 
-        electricity_costs_today, gas_kwh_cost, gas_sc_cost = work_out_electricity_costs_today(actual, electricity_costs,
-                                                                                              tday, verbose)
+        electricity_costs_today, gas_kwh_cost, gas_sc_cost = work_out_costs_today(actual, electricity_costs,
+                                                                                  tday, verbose)
 
         gas_hot_water_saving_active = gas_hot_water and tday.month >= 3
         kwh = 0
@@ -626,10 +625,6 @@ def simulate_tariff(
                 )
         else:
             charge_slots = []
-        if gas_sc_cost is None:
-            gas_sc_cost = gas_tariffs_cache[(False, tday.strptime('%Y-%m-%d'))]
-        if gas_kwh_cost is None:
-            gas_kwh_cost = gas_tariffs_cache[(True, tday.strptime('%Y-%m-%d'))]
         electricity_import_cost = 0
         gas_import_cost = 0
         electricity_export_cost = 0
@@ -930,9 +925,9 @@ def map_to_model_date(tday):
     return tmodel
 
 
-def work_out_electricity_costs_today(actual, electricity_costs, tday, verbose):
-    gas_sc_cost = None
-    gas_kwh_cost = None
+def work_out_costs_today(actual, electricity_costs, tday, verbose=false):
+    gas_sc_cost = gas_tariffs_cache.get((False, tday.strftime('%Y-%m-%d')))
+    gas_kwh_cost = gas_tariffs_cache.get((True, tday.strftime('%Y-%m-%d')))
     found = None
     electricity_costs_today = electricity_costs
     for tariff in site['tariff_history']:
@@ -952,8 +947,20 @@ def work_out_electricity_costs_today(actual, electricity_costs, tday, verbose):
                         "export": period['export']
                     })
                 found = tname
-        gas_kwh_cost = site['tariffs'][gname]['kwh_costs']['import']
-        gas_sc_cost = site['tariffs'][gname]['standing']
+        # reconcile site.json values with database
+        gas_kwh_cost_declared = site['tariffs'][gname]['kwh_costs']['import']
+        gas_sc_cost_declared = site['tariffs'][gname]['standing']
+        if 'ovo' not in gname:
+            if gas_kwh_cost is not None and gas_kwh_cost != gas_kwh_cost_declared:
+                print(f'WARNING: declared gas kwh cost={gas_kwh_cost_declared} != database value {gas_kwh_cost} on {tday}' )
+            if gas_kwh_cost is None:
+                gas_kwh_cost = gas_kwh_cost_declared
+            if gas_sc_cost is not None and gas_sc_cost != gas_sc_cost_declared:
+                print(f'WARNING: declared gas standing charge cost={gas_sc_cost_declared} != database value {gas_sc_cost}' )
+            if gas_sc_cost is None:
+                gas_sc_cost = gas_sc_cost_declared
+
+
     if verbose:
         print(f'{tday}: electricity tariff={electricity_costs_today} gas sc={gas_sc_cost} kwh={gas_kwh_cost}')
         if found and verbose:
