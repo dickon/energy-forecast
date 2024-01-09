@@ -582,7 +582,7 @@ def simulate_tariff(
 
     cost = 0
     cost_series = []
-    solar_prod = 0
+    solar_prod_total = 0
     days = []
     day_cost_map = {}
     halfhours = []
@@ -611,89 +611,62 @@ def simulate_tariff(
         soc_daily = []
         solar_today = 0
         slots = [tday + datetime.timedelta(minutes=x * 30) for x in range(48)]
-        if agile_charge:
-            agile_series = [(get_agile(x), x) for x in slots]
-            lowest = sorted(agile_series)
-            agile_outgoing_series = [get_agile(x, True) for x in slots]
-            highest_outgoing = list(reversed(sorted(agile_outgoing_series)))
-            charge_slots = [x for x in lowest if x[0] < 0]
-            if len(charge_slots) < 5:
-                charge_slots = lowest[:5]
-            if verbose:
-                print(
-                    "charge slots", [(x[0], x[1].strftime("%H:%M")) for x in charge_slots]
-                )
-        else:
-            charge_slots = []
+        charge_slots, highest_outgoing = work_out_agile_charge_slots(slots, verbose) if agile_charge else [], 0
         electricity_import_cost = 0
         gas_import_cost = 0
         electricity_export_cost = 0
         gas_hot_water_saving = 2200 if gas_hot_water_saving_active else 0
         for hh in range(48):
             hh_count += 1
-            t1 = tday + datetime.timedelta(minutes=hh * 30)
-            pos = get_solar_position_index(t1)
-            if not solar:
-                kwh_hh = 0
-                solar_real = False
-            else:
-                if t1 in solar_output_w:
-                    kwh_hh = solar_output_w[t1] * actual_scale
-                    solar_output_w_count += 1
-                    solar_real = True
-                else:
-                    solar_real = False
-                    kwh_hh = 0 if pos[0] <= 0 else solar_model_table.get(pos, 0)
-                    # print('estimated solar production', kwh_hh, 'at',t1, pos)
-            if verbose:
-                print(t1, "solar position", pos, "solar production", kwh_hh)
-            solar_prod += kwh_hh
-            solar_today += kwh_hh
-            kwh += kwh_hh
-            usage_hh = usage_actual.get(t1)
+            time_of_day = tday + datetime.timedelta(minutes=hh * 30)
+            pos, solar_prod_kwh_hh = work_out_solar_production(solar, solar_output_w_count, time_of_day, verbose)
+            solar_prod_total += solar_prod_kwh_hh
+            solar_today += solar_prod_kwh_hh
+            kwh += solar_prod_kwh_hh
+            usage_hh = usage_actual.get(time_of_day)
             usage_real = True
             if verbose and usage_hh:
-                print(f"{t1} actual electrical usage {usage_hh}Wh")
+                print(f"{time_of_day} actual electrical usage {usage_hh}Wh")
             if usage_hh is None:
-                usage_hh = usage_model[t1.strftime("%H:%M")]
+                usage_hh = usage_model[time_of_day.strftime("%H:%M")]
                 usage_real = False
                 if verbose:
-                    print(f"{t1} modelled electrical usage {usage_hh}Wh")
-            if t1.hour >= 2 and gas_hot_water_saving > 0:
+                    print(f"{time_of_day} modelled electrical usage {usage_hh}Wh")
+            if time_of_day.hour >= 2 and gas_hot_water_saving > 0:
                 discount = min(gas_hot_water_saving, usage_hh - 100)
                 usage_hh -= discount
                 gas_hot_water_saving -= discount
                 if verbose:
                     print(
-                        f"gas hot water reduced usage at {t1} by  {discount}Wh to ${usage_hh}"
+                        f"gas hot water reduced usage at {time_of_day} by  {discount}Wh to ${usage_hh}"
                     )
                 assert usage_hh > 0
-            net_use = usage_hh - kwh_hh  # net wh energy requirement for the period
+            net_use = usage_hh - solar_prod_kwh_hh  # net wh energy requirement for the period
             if verbose:
-                print(f"{t1} net electrical requirement {net_use}Wh")
+                print(f"{time_of_day} net electrical requirement {net_use}Wh")
             price_matches = [
                 price
                 for price in electricity_costs_today
-                if t1.hour >= price["start"] and t1.hour < price["end"]
+                if time_of_day.hour >= price["start"] and time_of_day.hour < price["end"]
             ]
-            assert len(price_matches) == 1, (price_matches, name, t1, electricity_costs_today)
+            assert len(price_matches) == 1, (price_matches, name, time_of_day, electricity_costs_today)
             price = price_matches[0]
             if verbose:
-                print(f"{t1} price structure {price}")
+                print(f"{time_of_day} price structure {price}")
             import_cost = price["import"]
-            winter_override = winter_agile_import and t1.month in [11, 12, 1, 2, 3]
+            winter_override = winter_agile_import and time_of_day.month in [11, 12, 1, 2, 3]
             if import_cost == "agile" or winter_override:
-                import_cost = get_agile(t1) / 100
+                import_cost = get_agile(time_of_day) / 100
             if price["export"] == "agile":
                 export_payment = (
                     get_agile(
-                        t1,
+                        time_of_day,
                         outgoing=True,
                     )
                     / 100
                 )
                 if verbose:
-                    print("export", t1, "is", export_payment)
+                    print("export", time_of_day, "is", export_payment)
             else:
                 export_payment = price["export"]
                 if winter_override:
@@ -705,14 +678,14 @@ def simulate_tariff(
                 gas_cost = ( gas_sc_cost + gas_kwh_day * gas_kwh_cost)
                 gas_import_cost += gas_cost
                 if verbose:
-                    print(f"{t1} gas use {gas_kwh_day}kWh, cost £${gas_cost:.2f}")
+                    print(f"{time_of_day} gas use {gas_kwh_day}kWh, cost £${gas_cost:.2f}")
             else:
                 gas_cost = 0
             hh_cost = (standing + gas_cost) if hh == 0 else 0
             grid_flow = 0
             soc_delta = 0
             if verbose:
-                print(f"{t1} net use net use {net_use}Wh (usage={usage_hh}Wh solar={kwh_hh}Wh)")
+                print(f"{time_of_day} net use net use {net_use}Wh (usage={usage_hh}Wh solar={solar_prod_kwh_hh}Wh)")
             if net_use > 0:
                 # we do need energy
                 bat_reserve_limit = battery_size * reserve_threshold
@@ -724,12 +697,12 @@ def simulate_tariff(
                 grid_flow = net_use - charge_add
                 soc_delta -= charge_add
                 if verbose:
-                    print(f"{t1} taking ${grid_flow}Wh from grid")
+                    print(f"{time_of_day} taking ${grid_flow}Wh from grid")
                 hh_cost += import_cost * grid_flow / 1000
                 electricity_import_cost += import_cost * grid_flow / 1000
             else:
                 # we have spare energy
-                if kwh_hh > 0:
+                if solar_prod_kwh_hh > 0:
                     charge_delta = (
                         min(-net_use, (battery_size - soc) / battery_efficiency)
                         if battery_today
@@ -759,12 +732,12 @@ def simulate_tariff(
                 hh_cost -= export_kwh * export_payment
                 electricity_export_cost -= export_kwh * export_payment
             if agile_charge:
-                grid_charge_now = t1 in [x[1] for x in charge_slots] and (
+                grid_charge_now = time_of_day in [x[1] for x in charge_slots] and (
                     soc > battery_size * 0.5 and import_cost > 0.1
                 )
             else:
                 grid_charge_now = (
-                    t1.hour >= 2 and t1.hour < 5 and grid_charge and battery
+                    time_of_day.hour >= 2 and time_of_day.hour < 5 and grid_charge and battery
                 )
 
             if grid_charge_now:
@@ -792,11 +765,11 @@ def simulate_tariff(
             export_payment_bonus = 0
             if grid_discharge or saving_sessions_discharge:
                 go = False
-                if saving_sessions_discharge and (t1.month == 12 and t1.year == 2023) or (t1.month in [1, 2] and t1.year==2024):
+                if saving_sessions_discharge and (time_of_day.month == 12 and time_of_day.year == 2023) or (time_of_day.month in [1, 2] and time_of_day.year==2024):
                     go = (
-                        t1.month in [12, 1, 2]
-                        and t1.day in [7, 14, 21]
-                        and (t1.hour == 17 or (t1.hour == 18 and t1.minute < 30))
+                        time_of_day.month in [12, 1, 2]
+                        and time_of_day.day in [7, 14, 21]
+                        and (time_of_day.hour == 17 or (time_of_day.hour == 18 and time_of_day.minute < 30))
                     )
                     export_payment_bonus = 4.2
                 elif grid_discharge and price["export"] == "agile":
@@ -841,12 +814,12 @@ def simulate_tariff(
 
             soc_daily.append(soc)
             soc_series.append(soc)
-            halfhours.append(t1)
+            halfhours.append(time_of_day)
 
             new_soc = min(battery_size, soc + soc_delta)
             if verbose:
                 print(
-                    f'{name} {t1} sun {pos}, solar prod {kwh_hh/1000:.3f}kWh{"*" if usage_real else "?"}, '
+                    f'{name} {time_of_day} sun {pos}, solar prod {solar_prod_kwh_hh/1000:.3f}kWh{"*" if usage_real else "?"}, '
                     + f'usage {usage_hh/1000:.03f}{"*" if usage_real else "?"} net_use_house {net_use/1000:.03f} '
                     + f"grid flow {grid_flow/1000:.3f}kWh in@£{import_cost} ex@£{export_payment} "
                     + f"battery flow {soc_delta/1000:.3f}kWh -> {new_soc/1000:.3f}kWh min_bat "
@@ -917,6 +890,40 @@ def simulate_tariff(
     }
 
 
+def work_out_solar_production(solar, solar_output_w_count, time_of_day, verbose):
+    pos = get_solar_position_index(time_of_day)
+    if not solar:
+        solar_prod_kwh_hh = 0
+        solar_real = False
+    else:
+        if time_of_day in solar_output_w:
+            solar_prod_kwh_hh = solar_output_w[time_of_day] * actual_scale
+            solar_output_w_count += 1
+            solar_real = True
+        else:
+            solar_real = False
+            solar_prod_kwh_hh = 0 if pos[0] <= 0 else solar_model_table.get(pos, 0)
+            # print('estimated solar production', solar_prod_kwh_hh, 'at',t1, pos)
+    if verbose:
+        print(time_of_day, "solar position", pos, "solar production", solar_prod_kwh_hh)
+    return pos, solar_prod_kwh_hh
+
+
+def work_out_agile_charge_slots(slots, verbose):
+    agile_series = [(get_agile(x), x) for x in slots]
+    lowest = sorted(agile_series)
+    agile_outgoing_series = [get_agile(x, True) for x in slots]
+    highest_outgoing = list(reversed(sorted(agile_outgoing_series)))
+    charge_slots = [x for x in lowest if x[0] < 0]
+    if len(charge_slots) < 5:
+        charge_slots = lowest[:5]
+    if verbose:
+        print(
+            "charge slots", [(x[0], x[1].strftime("%H:%M")) for x in charge_slots]
+        )
+    return charge_slots, highest_outgoing
+
+
 def map_to_model_date(tday):
     tday2 = tday
     if tday2.day == 29 and tday2.month == 2:
@@ -925,7 +932,7 @@ def map_to_model_date(tday):
     return tmodel
 
 
-def work_out_costs_today(actual, electricity_costs, tday, verbose=false):
+def work_out_costs_today(actual, electricity_costs, tday, verbose=False):
     gas_sc_cost = gas_tariffs_cache.get((False, tday.strftime('%Y-%m-%d')))
     gas_kwh_cost = gas_tariffs_cache.get((True, tday.strftime('%Y-%m-%d')))
     found = None
