@@ -555,17 +555,13 @@ def simulate_tariff(
     electricity_costs=None,
     color="grey",
     verbose=False,
-    start = None,
-    end = None
+    start = datetime.datetime.strptime(
+        "2024-01-01 00:00:00 Z", "%Y-%m-%d %H:%M:%S %z"
+    ),
+    end = datetime.datetime.strptime(
+        "2025-01-01 00:00:00 Z", "%Y-%m-%d %H:%M:%S %z"
+    )
 ):
-    if start is None:
-        start = datetime.datetime.strptime(
-            "2024-01-01 00:00:00 Z", "%Y-%m-%d %H:%M:%S %z"
-        )
-    if end is None:
-        end = datetime.datetime.strptime(
-            "2025-01-01 00:00:00 Z", "%Y-%m-%d %H:%M:%S %z"
-        )
     if electricity_costs is None:
         electricity_costs = [
             {
