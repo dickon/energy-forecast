@@ -678,25 +678,24 @@ def simulate_tariff(
             else:
                 gas_cost = 0
             hh_cost = (standing + gas_cost) if hh == 0 else 0
-            grid_flow = 0
+            wh_from_grid = 0
             soc_delta = 0
             if verbose:
                 print(f"{time_of_day} net use net use {net_use}Wh (usage={usage_hh}Wh solar={solar_prod_kwh_hh}Wh)")
             if net_use > 0:
                 # we do need energy
                 bat_reserve_limit = battery_size * reserve_threshold
-                charge_add = (
+                wh_from_battery = (
                     min(net_use, soc - bat_reserve_limit, maximum_charge_rate_watts / 2)
                     if battery_today
                     else 0
                 )
-                grid_flow = net_use - charge_add
-                soc_delta -= charge_add
+                wh_from_grid += net_use - wh_from_battery
+                soc_delta -= wh_from_battery
                 if verbose:
-                    print(f"{time_of_day} taking ${grid_flow}Wh from grid")
-                hh_cost += import_cost * grid_flow / 1000
-                electricity_import_cost += import_cost * grid_flow / 1000
+                    print(f"{time_of_day} taking {wh_from_grid}Wh from grid and {wh_from_battery}Wh from battery (battery today={battery_today}) daily import cost now={electricity_import_cost}")
             else:
+                # we have spare energy
                 # we have spare energy
                 if solar_prod_kwh_hh > 0:
                     charge_delta = (
@@ -723,7 +722,7 @@ def simulate_tariff(
                 else:
                     export_kwh = 0
                 export_kwh = max(export_kwh, 0)
-                grid_flow = -export_kwh * 1000
+                wh_from_grid = -export_kwh * 1000
                 assert export_kwh >= 0
                 hh_cost -= export_kwh * export_payment
                 electricity_export_cost -= export_kwh * export_payment
@@ -736,20 +735,19 @@ def simulate_tariff(
                     time_of_day.hour >= 2 and time_of_day.hour < 5 and grid_charge and battery
                 )
 
-            if grid_charge_now:
-                grid_flow = (
+            if grid_charge_now and battery_today:
+                wh_from_grid += max(0, (
                     min(
                         (battery_size - soc) / battery_efficiency,
                         maximum_charge_rate_watts / 2,
                     )
                     - soc_delta
-                )
-                hh_cost += import_cost * grid_flow / 1000
-                add = grid_flow * battery_efficiency
+                ))
+                add = wh_from_grid * battery_efficiency
                 if verbose:
                     print(
                         "grid charge",
-                        grid_flow,
+                        wh_from_grid,
                         "add",
                         add,
                         "soc delta was",
@@ -758,6 +756,11 @@ def simulate_tariff(
                         soc_delta + add,
                     )
                 soc_delta += add
+            if wh_from_grid > 0:
+                cost_electricity = import_cost * wh_from_grid / 1000
+                hh_cost += cost_electricity
+                electricity_import_cost += cost_electricity
+
             export_payment_bonus = 0
             if grid_discharge or saving_sessions_discharge:
                 go = False
@@ -817,7 +820,7 @@ def simulate_tariff(
                 print(
                     f'{name} {time_of_day} sun {pos}, solar prod {solar_prod_kwh_hh/1000:.3f}kWh{"*" if usage_real else "?"}, '
                     + f'usage {usage_hh/1000:.03f}{"*" if usage_real else "?"} net_use_house {net_use/1000:.03f} '
-                    + f"grid flow {grid_flow/1000:.3f}kWh in@£{import_cost} ex@£{export_payment} "
+                    + f"grid flow {wh_from_grid/1000:.3f}kWh in@£{import_cost} ex@£{export_payment} "
                     + f"battery flow {soc_delta/1000:.3f}kWh -> {new_soc/1000:.3f}kWh min_bat "
                     + f"{min_soc/1000:.3f}kWh battery_wear=£{battery_wear_cost:0.02f} hh=£{hh_cost:0.02f} total £{cost:0.02f}"
                 )
@@ -980,17 +983,21 @@ def plot_days(results):
               #'solar_production'
               ]:
         plt.plot(days,[m[d][k] for d in days], label=k)
+
     plt.title(results['name'])
+    plt.legend()
     plt.show()
     return plt
 
 actual_results = simulate_tariff(name='actual', actual=True, verbose=False,
-                                 start=t0, end=t1, saving_sessions_discharge=True, solar=True)
-#plot_days(actual_results)
+                                  start=t0, end=t1, saving_sessions_discharge=True, solar=True)
+plot_days(actual_results)
 
 old_results = simulate_tariff(
-    name="flexible no solar no batteries", gas_hot_water=True, verbose=False, battery=False, solar=False
+     name="flexible no solar no batteries", gas_hot_water=True, verbose=False, battery=False, solar=False
 )
+plot_days(old_results)
+
 discharge_results = simulate_tariff(
     name="discharge flux",
     electricity_costs=site["tariffs"]["flux"]["kwh_costs"],
@@ -1004,7 +1011,6 @@ discharge_results = simulate_tariff(
     start=t0,
 )
 plot_days(discharge_results)
-
 current_results = simulate_tariff(
     name="flux",
     electricity_costs=site["tariffs"]["flux"]["kwh_costs"],
@@ -1015,6 +1021,7 @@ current_results = simulate_tariff(
     verbose=False,
     saving_sessions_discharge=True,
 )
+plot_days(current_results)
 winter_agile_result = simulate_tariff(
     name="winter agile",
     electricity_costs=site["tariffs"]["flux"]["kwh_costs"],
