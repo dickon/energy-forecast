@@ -615,19 +615,11 @@ def simulate_tariff(
         for hh in range(48):
             hh_count += 1
             time_of_day = tday + datetime.timedelta(minutes=hh * 30)
-            pos, solar_prod_kwh_hh = work_out_solar_production(solar, solar_output_w_count, time_of_day, verbose)
-            solar_prod_total += solar_prod_kwh_hh
-            solar_today += solar_prod_kwh_hh
-            kwh += solar_prod_kwh_hh
-            usage_hh = usage_actual.get(time_of_day)
-            usage_real = True
-            if verbose and usage_hh:
-                print(f"{time_of_day} actual electrical usage {usage_hh}Wh")
-            if usage_hh is None:
-                usage_hh = usage_model[time_of_day.strftime("%H:%M")]
-                usage_real = False
-                if verbose:
-                    print(f"{time_of_day} modelled electrical usage {usage_hh}Wh")
+            pos, solar_prod_wh_hh = work_out_solar_production(solar, solar_output_w_count, time_of_day, verbose)
+            solar_prod_total += solar_prod_wh_hh
+            solar_today += solar_prod_wh_hh
+            kwh += solar_prod_wh_hh
+            usage_hh, usage_real = work_out_electricity_usage(time_of_day, verbose)
             if time_of_day.hour >= 2 and gas_hot_water_saving > 0:
                 discount = min(gas_hot_water_saving, usage_hh - 100)
                 usage_hh -= discount
@@ -637,7 +629,7 @@ def simulate_tariff(
                         f"gas hot water reduced usage at {time_of_day} by  {discount}Wh to ${usage_hh}"
                     )
                 assert usage_hh > 0
-            net_use = usage_hh - solar_prod_kwh_hh  # net wh energy requirement for the period
+            net_use = usage_hh - solar_prod_wh_hh  # net wh energy requirement for the period
             if verbose:
                 print(f"{time_of_day} net electrical requirement {net_use}Wh")
             price_matches = [
@@ -681,7 +673,7 @@ def simulate_tariff(
             wh_from_grid = 0
             soc_delta = 0
             if verbose:
-                print(f"{time_of_day} net use net use {net_use}Wh (usage={usage_hh}Wh solar={solar_prod_kwh_hh}Wh)")
+                print(f"{time_of_day} net use net use {net_use}Wh (usage={usage_hh}Wh solar={solar_prod_wh_hh}Wh)")
             if net_use > 0:
                 # we do need energy
                 bat_reserve_limit = battery_size * reserve_threshold
@@ -697,7 +689,7 @@ def simulate_tariff(
             else:
                 # we have spare energy
                 # we have spare energy
-                if solar_prod_kwh_hh > 0:
+                if solar_prod_wh_hh > 0:
                     charge_delta = (
                         min(-net_use, (battery_size - soc) / battery_efficiency)
                         if battery_today
@@ -818,7 +810,7 @@ def simulate_tariff(
             new_soc = min(battery_size, soc + soc_delta)
             if verbose:
                 print(
-                    f'{name} {time_of_day} sun {pos}, solar prod {solar_prod_kwh_hh/1000:.3f}kWh{"*" if usage_real else "?"}, '
+                    f'{name} {time_of_day} sun {pos}, solar prod {solar_prod_wh_hh/1000:.3f}kWh{"*" if usage_real else "?"}, '
                     + f'usage {usage_hh/1000:.03f}{"*" if usage_real else "?"} net_use_house {net_use/1000:.03f} '
                     + f"grid flow {wh_from_grid/1000:.3f}kWh in@£{import_cost} ex@£{export_payment} "
                     + f"battery flow {soc_delta/1000:.3f}kWh -> {new_soc/1000:.3f}kWh min_bat "
@@ -887,6 +879,19 @@ def simulate_tariff(
         "days": days,
         "months": months,
     }
+
+
+def work_out_electricity_usage(time_of_day, verbose):
+    usage_hh = usage_actual.get(time_of_day)
+    usage_real = True
+    if verbose and usage_hh:
+        print(f"{time_of_day} actual electrical usage {usage_hh}Wh")
+    if usage_hh is None:
+        usage_hh = usage_model[time_of_day.strftime("%H:%M")]
+        usage_real = False
+        if verbose:
+            print(f"{time_of_day} modelled electrical usage {usage_hh}Wh")
+    return usage_hh, usage_real
 
 
 def work_out_solar_production(solar, solar_output_w_count, time_of_day, verbose):
