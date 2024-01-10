@@ -632,33 +632,8 @@ def simulate_tariff(
             net_use = usage_hh - solar_prod_wh_hh  # net wh energy requirement for the period
             if verbose:
                 print(f"{time_of_day} net electrical requirement {net_use}Wh")
-            price_matches = [
-                price
-                for price in electricity_costs_today
-                if time_of_day.hour >= price["start"] and time_of_day.hour < price["end"]
-            ]
-            assert len(price_matches) == 1, (price_matches, name, time_of_day, electricity_costs_today)
-            price = price_matches[0]
-            if verbose:
-                print(f"{time_of_day} price structure {price}")
-            import_cost = price["import"]
-            winter_override = winter_agile_import and time_of_day.month in [11, 12, 1, 2, 3]
-            if import_cost == "agile" or winter_override:
-                import_cost = get_agile(time_of_day) / 100
-            if price["export"] == "agile":
-                export_payment = (
-                    get_agile(
-                        time_of_day,
-                        outgoing=True,
-                    )
-                    / 100
-                )
-                if verbose:
-                    print("export", time_of_day, "is", export_payment)
-            else:
-                export_payment = price["export"]
-                if winter_override:
-                    export_payment = 0.15
+            export_payment, import_cost, price = work_out_prices_now(electricity_costs_today, name, time_of_day,
+                                                                     verbose, winter_agile_import)
             if hh == 0:
                 gas_kwh_day = gas_use.get(tmodel.strftime("%Y-%m-%d"), 0) / 1000 + (
                     10 if gas_hot_water_saving_active else 0
@@ -670,134 +645,19 @@ def simulate_tariff(
             else:
                 gas_cost = 0
             hh_cost = (standing + gas_cost) if hh == 0 else 0
-            wh_from_grid = 0
-            soc_delta = 0
             if verbose:
                 print(f"{time_of_day} net use net use {net_use}Wh (usage={usage_hh}Wh solar={solar_prod_wh_hh}Wh)")
-            if net_use > 0:
-                # we do need energy
-                bat_reserve_limit = battery_size * reserve_threshold
-                wh_from_battery = (
-                    min(net_use, soc - bat_reserve_limit, maximum_charge_rate_watts / 2)
-                    if battery_today
-                    else 0
-                )
-                wh_from_grid += net_use - wh_from_battery
-                soc_delta -= wh_from_battery
-                if verbose:
-                    print(f"{time_of_day} taking {wh_from_grid}Wh from grid and {wh_from_battery}Wh from battery (battery today={battery_today}) daily import cost now={electricity_import_cost}")
-            else:
-                # we have spare energy
-                # we have spare energy
-                if solar_prod_wh_hh > 0:
-                    charge_delta = (
-                        min(-net_use, (battery_size - soc) / battery_efficiency)
-                        if battery_today
-                        else 0
-                    )
-                    soc_delta_charge = min(
-                        maximum_charge_rate_watts / 2 - soc_delta,
-                        charge_delta * battery_efficiency,
-                    )
-                    if verbose:
-                        print(
-                            "charge",
-                            charge_delta,
-                            "soc delta",
-                            soc_delta_charge,
-                            "to deal with",
-                            net_use,
-                        )
-                    soc_delta += soc_delta_charge
-                    assert soc + soc_delta <= battery_size
-                    export_kwh = (-net_use - charge_delta) / 1000
-                else:
-                    export_kwh = 0
-                export_kwh = max(export_kwh, 0)
-                wh_from_grid = -export_kwh * 1000
-                assert export_kwh >= 0
-                hh_cost -= export_kwh * export_payment
-                electricity_export_cost -= export_kwh * export_payment
-            if agile_charge:
-                grid_charge_now = time_of_day in [x[1] for x in charge_slots] and (
-                    soc > battery_size * 0.5 and import_cost > 0.1
-                )
-            else:
-                grid_charge_now = (
-                    time_of_day.hour >= 2 and time_of_day.hour < 5 and grid_charge and battery
-                )
+            soc_delta, wh_from_grid = (
+                handle_energy_supply(battery_today, net_use, soc, time_of_day, verbose) if net_use > 0
+                else  handle_energy_excess(battery_today, net_use, soc, solar_prod_wh_hh, verbose))
+            soc_delta, wh_from_grid = handle_grid_charge(agile_charge, battery, battery_today, charge_slots,
+                                                         grid_charge, import_cost, soc, soc_delta, time_of_day, verbose,
+                                                         wh_from_grid)
 
-            if grid_charge_now and battery_today:
-                wh_from_grid += max(0, (
-                    min(
-                        (battery_size - soc) / battery_efficiency,
-                        maximum_charge_rate_watts / 2,
-                    )
-                    - soc_delta
-                ))
-                add = wh_from_grid * battery_efficiency
-                if verbose:
-                    print(
-                        "grid charge",
-                        wh_from_grid,
-                        "add",
-                        add,
-                        "soc delta was",
-                        soc_delta,
-                        "now",
-                        soc_delta + add,
-                    )
-                soc_delta += add
-            if wh_from_grid > 0:
-                cost_electricity = import_cost * wh_from_grid / 1000
-                hh_cost += cost_electricity
-                electricity_import_cost += cost_electricity
-
+            soc_delta = handle_grid_discharge(export_payment, grid_discharge,
+                                                       highest_outgoing, saving_sessions_discharge, soc,
+                                                       soc_delta, time_of_day,  price["export"] == "agile", verbose)
             export_payment_bonus = 0
-            if grid_discharge or saving_sessions_discharge:
-                go = False
-                if saving_sessions_discharge and (time_of_day.month == 12 and time_of_day.year == 2023) or (time_of_day.month in [1, 2] and time_of_day.year==2024):
-                    go = (
-                        time_of_day.month in [12, 1, 2]
-                        and time_of_day.day in [7, 14, 21]
-                        and (time_of_day.hour == 17 or (time_of_day.hour == 18 and time_of_day.minute < 30))
-                    )
-                    export_payment_bonus = 4.2
-                elif grid_discharge and price["export"] == "agile":
-                    go = (
-                        export_payment >= highest_outgoing[6] / 100
-                        and export_payment > 0.25
-                    )
-                elif grid_discharge:
-                    go = export_payment >= discharge_price_floor
-                if go:
-                    if verbose:
-                        print("grid discharge available at", t, "soc", soc)
-                    if soc >= discharge_threshold * battery_size:
-                        limit = battery_size * discharge_threshold
-                        dump_amount = max(
-                            0, min((soc + soc_delta) - limit, discharge_rate_w / 2)
-                        )
-                        if verbose:
-                            print("dumping", dump_amount)
-                        soc_delta -= dump_amount
-                        payment = (dump_amount / 1000) * (
-                            export_payment + export_payment_bonus
-                        )
-                        hh_cost -= payment
-                        if verbose:
-                            print(
-                                "t",
-                                t,
-                                "grid dump at SOC",
-                                soc,
-                                "of",
-                                dump_amount,
-                                "payment",
-                                payment,
-                            )
-            # if import_cost < 0:
-            #     hh_cost += import_cost * 4 # run some heaters
             battery_wear_cost = battery_cost_per_wh * -min(0, soc_delta)
             hh_cost += battery_wear_cost
             cost += hh_cost
@@ -834,24 +694,7 @@ def simulate_tariff(
                                      "solar_production": solar_today/1000}
 
     if actual:
-        for bill in site['bills']:
-            start = datetime.datetime.strptime(bill['start'], '%Y-%m-%d').date()
-            end = datetime.datetime.strptime(bill['end'], '%Y-%m-%d').date()
-            total = 0
-            day_cost = {}
-            if 'total' not in bill:
-                bill['total'] = bill['electricity_import_cost'] + bill['gas_import_cost'] + bill['electricity_export_cost']
-            for i in range((end-start).days):
-                day = start+datetime.timedelta(days=i)
-                print(day, day_cost_map[day])
-                for field, x in day_cost_map.get(day, {}).items():
-                    day_cost.setdefault(field, 0)
-                    day_cost[field] += x
-                    total += day_cost[field]
-            print(f'Bill from {start} to {end}')
-            for field in day_cost:
-                print('\tfor '+field)
-                print('\t\texpected', bill.get(field), 'actual', day_cost[field])
+        compare_with_bills(day_cost_map)
     prev = 0
     month_cost = [0] * 12
     months = []
@@ -879,6 +722,185 @@ def simulate_tariff(
         "days": days,
         "months": months,
     }
+
+
+def handle_grid_discharge(export_payment,  grid_discharge, highest_outgoing,
+                          saving_sessions_discharge, soc, soc_delta, time_of_day, agile, verbose):
+    if grid_discharge or saving_sessions_discharge:
+        go = False
+        if saving_sessions_discharge and (time_of_day.month == 12 and time_of_day.year == 2023) or (
+                time_of_day.month in [1, 2] and time_of_day.year == 2024):
+            go = (
+                    time_of_day.month in [12, 1, 2]
+                    and time_of_day.day in [7, 14, 21]
+                    and (time_of_day.hour == 17 or (time_of_day.hour == 18 and time_of_day.minute < 30))
+            )
+            export_payment_bonus = 4.2
+        elif grid_discharge and agile:
+            go = (
+                    export_payment >= highest_outgoing[6] / 100
+                    and export_payment > 0.25
+            )
+        elif grid_discharge:
+            go = export_payment >= discharge_price_floor
+        if go:
+            if verbose:
+                print("grid discharge available at", time_of_day, "soc", soc)
+            if soc >= discharge_threshold * battery_size:
+                limit = battery_size * discharge_threshold
+                dump_amount = max(
+                    0, min((soc + soc_delta) - limit, discharge_rate_w / 2)
+                )
+                if verbose:
+                    print("dumping", dump_amount)
+                soc_delta -= dump_amount
+                if verbose:
+                    print(
+                        "t",
+                        t,
+                        "grid dump at SOC",
+                        soc,
+                        "of",
+                        dump_amount,
+                    )
+    return soc_delta
+
+
+def handle_grid_charge(agile_charge, battery, battery_today, charge_slots, grid_charge, import_cost, soc, soc_delta,
+                       time_of_day, verbose, wh_from_grid):
+    if agile_charge:
+        grid_charge_now = time_of_day in [x[1] for x in charge_slots] and (
+                soc > battery_size * 0.5 and import_cost > 0.1
+        )
+    else:
+        grid_charge_now = (
+                time_of_day.hour >= 2 and time_of_day.hour < 5 and grid_charge and battery
+        )
+    if grid_charge_now and battery_today:
+        wh_from_grid += max(0, (
+                min(
+                    (battery_size - soc) / battery_efficiency,
+                    maximum_charge_rate_watts / 2,
+                )
+                - soc_delta
+        ))
+        add = wh_from_grid * battery_efficiency
+        if verbose:
+            print(
+                "grid charge",
+                wh_from_grid,
+                "add",
+                add,
+                "soc delta was",
+                soc_delta,
+                "now",
+                soc_delta + add,
+            )
+        soc_delta += add
+    return soc_delta, wh_from_grid
+
+
+def handle_energy_excess(battery_today, net_use, soc, solar_prod_wh_hh, verbose):
+    # we have spare energy
+    if solar_prod_wh_hh > 0:
+        charge_delta = (
+            min(-net_use, (battery_size - soc) / battery_efficiency)
+            if battery_today
+            else 0
+        )
+        soc_delta_charge = min(
+            maximum_charge_rate_watts / 2,
+            charge_delta * battery_efficiency,
+        )
+        if verbose:
+            print(
+                "charge",
+                charge_delta,
+                "soc delta",
+                soc_delta_charge,
+                "to deal with",
+                net_use,
+            )
+        assert soc + soc_delta_charge <= battery_size
+        export_kwh = (-net_use - charge_delta) / 1000
+    else:
+        export_kwh = 0
+    export_kwh = max(export_kwh, 0)
+    assert export_kwh >= 0
+    wh_from_grid = -export_kwh * 1000
+    return soc_delta_charge, wh_from_grid
+
+
+def handle_energy_supply(battery_today, net_use, soc, time_of_day, verbose):
+    """Called when we do need energy. Supply `net_use` Wh from either grid of battery, given the `time_of_day`
+
+    Iff `battery_today` we can use the battery, which has capacity `soc` (in Wh).
+    Returns the Wh change in battery level and the Wh from grid.
+    """
+    bat_reserve_limit = battery_size * reserve_threshold
+    wh_from_battery = (
+        min(net_use, soc - bat_reserve_limit, maximum_charge_rate_watts / 2)
+        if battery_today
+        else 0
+    )
+    wh_from_grid = net_use - wh_from_battery
+    soc_delta = -wh_from_battery
+    if verbose:
+        print(
+            f"{time_of_day} taking {wh_from_grid}Wh from grid and {wh_from_battery}Wh from battery (battery today={battery_today})")
+    return soc_delta, wh_from_grid
+
+
+def compare_with_bills(day_cost_map):
+    for bill in site['bills']:
+        start = datetime.datetime.strptime(bill['start'], '%Y-%m-%d').date()
+        end = datetime.datetime.strptime(bill['end'], '%Y-%m-%d').date()
+        total = 0
+        day_cost = {}
+        if 'total' not in bill:
+            bill['total'] = bill['electricity_import_cost'] + bill['gas_import_cost'] + bill['electricity_export_cost']
+        for i in range((end - start).days):
+            day = start + datetime.timedelta(days=i)
+            print(day, day_cost_map[day])
+            for field, x in day_cost_map.get(day, {}).items():
+                day_cost.setdefault(field, 0)
+                day_cost[field] += x
+                total += day_cost[field]
+        print(f'Bill from {start} to {end}')
+        for field in day_cost:
+            print('\tfor ' + field)
+            print('\t\texpected', bill.get(field), 'actual', day_cost[field])
+
+
+def work_out_prices_now(electricity_costs_today, name, time_of_day, verbose, winter_agile_import):
+    price_matches = [
+        price
+        for price in electricity_costs_today
+        if time_of_day.hour >= price["start"] and time_of_day.hour < price["end"]
+    ]
+    assert len(price_matches) == 1, (price_matches, name, time_of_day, electricity_costs_today)
+    price = price_matches[0]
+    if verbose:
+        print(f"{time_of_day} price structure {price}")
+    import_cost = price["import"]
+    winter_override = winter_agile_import and time_of_day.month in [11, 12, 1, 2, 3]
+    if import_cost == "agile" or winter_override:
+        import_cost = get_agile(time_of_day) / 100
+    if price["export"] == "agile":
+        export_payment = (
+                get_agile(
+                    time_of_day,
+                    outgoing=True,
+                )
+                / 100
+        )
+        if verbose:
+            print("export", time_of_day, "is", export_payment)
+    else:
+        export_payment = price["export"]
+        if winter_override:
+            export_payment = 0.15
+    return export_payment, import_cost, price
 
 
 def work_out_electricity_usage(time_of_day, verbose):
