@@ -651,8 +651,7 @@ def simulate_tariff(
                 handle_energy_supply(battery_today, net_use, soc, time_of_day, verbose) if net_use > 0
                 else  handle_energy_excess(battery_today, net_use, soc, solar_prod_wh_hh, verbose))
             soc_delta, wh_from_grid = handle_grid_charge(agile_charge, battery, battery_today, charge_slots,
-                                                         grid_charge, import_cost, soc, soc_delta, time_of_day, verbose,
-                                                         wh_from_grid)
+                                                         grid_charge, import_cost, soc, soc_delta, time_of_day,verbose, wh_from_grid)
 
             soc_delta = handle_grid_discharge(export_payment, grid_discharge,
                                                        highest_outgoing, saving_sessions_discharge, soc,
