@@ -74,7 +74,7 @@ def do_query(
     return resl[0]
 
 
-def json_cache(filename, generate, max_age_days=7):
+def json_cache(filename, generate, max_age_days=28):
     if os.path.exists(filename):
         mtime = os.stat(filename).st_mtime
         mtime_date = datetime.datetime.fromtimestamp(mtime)
@@ -326,9 +326,7 @@ def generate_solar_model():
     return record
 
 
-solar_model_record = json_cache(
-    "solar_model.json", generate_solar_model, max_age_days=7
-)
+solar_model_record = json_cache("solar_model.json", generate_solar_model)
 solar_output_w = {
     datetime.datetime.fromisoformat(t): v
     for (t, v) in solar_model_record["output"].items()
@@ -575,7 +573,6 @@ def simulate_tariff(
         print("run simulation", name)
     kwh_days = []
     soc = battery_size if battery else 0
-
     cost = 0
     cost_series = []
     solar_prod_total = 0
@@ -644,7 +641,6 @@ def simulate_tariff(
                     print(f"{time_of_day} gas use {gas_kwh_day}kWh, cost £${gas_cost:.2f}")
             else:
                 gas_cost = 0
-            hh_cost = (standing + gas_cost) if hh == 0 else 0
             if verbose:
                 print(f"{time_of_day} net use net use {net_use}Wh (usage={usage_hh}Wh solar={solar_prod_wh_hh}Wh)")
             soc_delta, wh_from_grid = (
@@ -658,8 +654,14 @@ def simulate_tariff(
                                                        soc_delta, time_of_day,  price["export"] == "agile", verbose)
             export_payment_bonus = 0
             battery_wear_cost = battery_cost_per_wh * -min(0, soc_delta)
-            hh_cost += battery_wear_cost
+            electricty_cost_hh = max(0, wh_from_grid) * price['import'] / 1000
+            hh_cost = (
+                ((standing + gas_cost) if hh == 0 else 0)
+                + electricty_cost_hh
+                + min(0, wh_from_grid) * price['export']
+                + battery_wear_cost)
             cost += hh_cost
+            electricity_import_cost += electricty_cost_hh
             day_cost += hh_cost
 
             soc_daily.append(soc)
