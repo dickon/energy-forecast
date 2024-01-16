@@ -533,6 +533,7 @@ def get_agile(t, outgoing=False):
     if v is not None:
         return v*markup
     print("miss", t, outgoing)
+    assert 0
 
 
 usage_model = {t: u for (t, u) in mean_time_of_day}
@@ -886,9 +887,9 @@ def work_out_prices_now(electricity_costs_today, name, time_of_day, verbose, win
     import_cost = price["import"]
     winter_override = winter_agile_import and time_of_day.month in [11, 12, 1, 2, 3]
     if import_cost == "agile" or winter_override:
-        import_cost = get_agile(time_of_day) / 100
+        price['import'] = get_agile(time_of_day) / 100
     if price["export"] == "agile":
-        export_payment = (
+        price['export'] = (
                 get_agile(
                     time_of_day,
                     outgoing=True,
@@ -897,10 +898,13 @@ def work_out_prices_now(electricity_costs_today, name, time_of_day, verbose, win
         )
         if verbose:
             print("export", time_of_day, "is", export_payment)
+        export_payment = price['export']
     else:
         export_payment = price["export"]
         if winter_override:
             export_payment = 0.15
+            price['export'] = export_payment
+    # TODO: simply return price
     return export_payment, import_cost, price
 
 
@@ -1017,6 +1021,29 @@ def plot_days(results):
     plt.show()
     return plt
 
+def plot(results_list):
+    f, (ax1, ax2, ax3, ax4) = matplotlib.pyplot.subplots(4, 1, sharex=True)
+    f.set_figwidth(18)
+    f.set_figheight(18)
+
+    for r in results_list:
+        ax1.plot(r["days"], r["cost_series"], color=r["color"], label=r["name"])
+        ax1.set_ylabel("cumulative cost, £")
+        ax2.plot(r["days"], r["soc_daily_lows"], color=r["color"], label=r["name"])
+        ax2.set_ylabel("battery daily low %")
+
+        if [x for x in r["kwh_days"] if x > 0]:
+            ax3.plot(r["days"], r["kwh_days"])
+        ax3.set_ylabel("solar production, Wh")
+        #ax4.plot(r["months"], r["month_cost"], color=r["color"], label=r["name"])
+        ax4.set_ylabel("monthly cost, £")
+        print("plan", r["name"], r["cost_series"][-1])
+
+    ax1.legend()
+    ax2.legend()
+    ax4.legend()
+    return f
+
 actual_results = simulate_tariff(name='actual', actual=True, verbose=False,
                                   start=t0, end=t1, saving_sessions_discharge=True, solar=True)
 plot_days(actual_results)
@@ -1062,6 +1089,7 @@ winter_agile_result = simulate_tariff(
     verbose=False,
     saving_sessions_discharge=True,
 )
+winter_agile_result["color"] = "pink"
 
 agile_results = simulate_tariff(
     name="agile",
@@ -1083,32 +1111,6 @@ agile_results = simulate_tariff(
     saving_sessions_discharge=True,
 )
 
-
-def plot(results_list):
-    f, (ax1, ax2, ax3, ax4) = matplotlib.pyplot.subplots(4, 1, sharex=True)
-    f.set_figwidth(18)
-    f.set_figheight(18)
-
-    for r in results_list:
-        ax1.plot(r["days"], r["cost_series"], color=r["color"], label=r["name"])
-        ax1.set_ylabel("cumulative cost, £")
-        ax2.plot(r["days"], r["soc_daily_lows"], color=r["color"], label=r["name"])
-        ax2.set_ylabel("battery daily low %")
-
-        if [x for x in r["kwh_days"] if x > 0]:
-            ax3.plot(r["days"], r["kwh_days"])
-        ax3.set_ylabel("solar production, Wh")
-        #ax4.plot(r["months"], r["month_cost"], color=r["color"], label=r["name"])
-        ax4.set_ylabel("monthly cost, £")
-        print("plan", r["name"], r["cost_series"][-1])
-
-    ax1.legend()
-    ax2.legend()
-    ax4.legend()
-    return f
-
-
-winter_agile_result["color"] = "pink"
 f = plot(
     [
         old_results,
