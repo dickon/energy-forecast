@@ -739,8 +739,8 @@ def simulate_tariff_and_store(name, **params):
     plot_days(results)
 
 def handle_grid_discharge(export_payment,  grid_discharge, highest_outgoing,
-                          saving_sessions_discharge, soc, soc_delta, time_of_day, agile, verbose):
-    if grid_discharge or saving_sessions_discharge:
+                          saving_sessions_discharge, soc, soc_delta, time_of_day, agile, verbose=False):
+    if grid_discharge or saving_sessions_discharge or agile:
         go = False
         if saving_sessions_discharge and (time_of_day.month == 12 and time_of_day.year == 2023) or (
                 time_of_day.month in [1, 2] and time_of_day.year == 2024):
@@ -755,6 +755,9 @@ def handle_grid_discharge(export_payment,  grid_discharge, highest_outgoing,
                     export_payment >= highest_outgoing[6] / 100
                     and export_payment > 0.25
             )
+            if go and verbose:
+                print('agile discharge at', time_of_day, 'price', export_payment)
+
         elif grid_discharge:
             go = export_payment >= discharge_price_floor
         if go:
@@ -955,8 +958,8 @@ def work_out_agile_charge_slots(slots, verbose):
     agile_outgoing_series = [get_agile(x, True) for x in slots]
     highest_outgoing = list(reversed(sorted(agile_outgoing_series)))
     charge_slots = [x for x in lowest if x[0] < 0]
-    if len(charge_slots) < 5:
-        charge_slots = lowest[:5]
+    if len(charge_slots) < 6:
+        charge_slots = lowest[:6]
     if verbose:
         print(
             "charge slots", [(x[0], x[1].strftime("%H:%M")) for x in charge_slots]
@@ -1044,7 +1047,7 @@ def plot(results_list):
         if [x for x in r["kwh_days"] if x > 0]:
             ax3.plot(r["days"], r["kwh_days"])
         ax3.set_ylabel("solar production, Wh")
-        #ax4.plot(r["months"], r["month_cost"], color=r["color"], label=r["name"])
+        ax4.plot(r["months"], r["month_cost"], color=r["color"], label=r["name"])
         ax4.set_ylabel("monthly cost, £")
         print("plan", r["name"], r["cost_series"][-1])
 
@@ -1070,7 +1073,6 @@ simulate_tariff_and_store(
     battery=True,
     solar=True,
     color="blue",
-    verbose=False,
     saving_sessions_discharge=True,
 )
 
