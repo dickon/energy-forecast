@@ -10,6 +10,8 @@ import influxdb_client
 import matplotlib.pyplot as plt
 from influxdb_client.client.write_api import SYNCHRONOUS
 
+RUN_ARCHIVE = []
+
 site = json.load(open(os.path.expanduser("~/src/powerwallextract/site.json")))
 
 t0 = datetime.datetime.strptime(
@@ -731,6 +733,10 @@ def simulate_tariff(
         "months": months,
     }
 
+def simulate_tariff_and_store(name, **params):
+    results = simulate_tariff(name, **params)
+    RUN_ARCHIVE.append(results)
+    plot_days(results)
 
 def handle_grid_discharge(export_payment,  grid_discharge, highest_outgoing,
                           saving_sessions_discharge, soc, soc_delta, time_of_day, agile, verbose):
@@ -1048,7 +1054,7 @@ def plot(results_list):
     return f
 
 
-agile_results = simulate_tariff(
+simulate_tariff_and_store(
     name="agile",
     electricity_costs=[
         {
@@ -1064,22 +1070,18 @@ agile_results = simulate_tariff(
     battery=True,
     solar=True,
     color="blue",
-    verbose=True,
+    verbose=False,
     saving_sessions_discharge=True,
 )
-plot_days(agile_results)
 
 
-actual_results = simulate_tariff(name='actual', actual=True, verbose=False,
+simulate_tariff_and_store(name='actual', actual=True, verbose=False,
                                   start=t0, end=t1, saving_sessions_discharge=True, solar=True)
-plot_days(actual_results)
 
-old_results = simulate_tariff(
+simulate_tariff_and_store(
      name="flexible no solar no batteries", gas_hot_water=True, verbose=False, battery=False, solar=False
 )
-plot_days(old_results)
-
-discharge_results = simulate_tariff(
+simulate_tariff_and_store(
     name="discharge flux",
     electricity_costs=site["tariffs"]["flux"]["kwh_costs"],
     grid_charge=True,
@@ -1089,10 +1091,8 @@ discharge_results = simulate_tariff(
     color="yellow",
     verbose=False,
     saving_sessions_discharge=True,
-    start=t0,
 )
-plot_days(discharge_results)
-current_results = simulate_tariff(
+simulate_tariff_and_store(
     name="flux",
     electricity_costs=site["tariffs"]["flux"]["kwh_costs"],
     grid_charge=True,
@@ -1102,8 +1102,7 @@ current_results = simulate_tariff(
     verbose=False,
     saving_sessions_discharge=True,
 )
-plot_days(current_results)
-winter_agile_result = simulate_tariff(
+simulate_tariff_and_store(
     name="winter agile",
     electricity_costs=site["tariffs"]["flux"]["kwh_costs"],
     winter_agile_import=True,
@@ -1111,20 +1110,10 @@ winter_agile_result = simulate_tariff(
     agile_charge=True,
     battery=True,
     solar=True,
-    color="blue",
+    color="pink",
     verbose=False,
     saving_sessions_discharge=True,
 )
-winter_agile_result["color"] = "pink"
 
-
-f = plot(
-    [
-        old_results,
-        current_results,
-        agile_results,
-        winter_agile_result,
-        discharge_results,
-    ]
-)
+f = plot(RUN_ARCHIVE)
 f.show()
