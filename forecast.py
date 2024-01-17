@@ -743,8 +743,8 @@ def handle_grid_discharge(wh_from_grid, export_payment,  grid_discharge, highest
                           saving_sessions_discharge, soc, soc_delta, time_of_day, agile, verbose=False):
     if grid_discharge or saving_sessions_discharge:
         go = False
-        if saving_sessions_discharge and (time_of_day.month == 12 and time_of_day.year == 2023) or (
-                time_of_day.month in [1, 2] and time_of_day.year == 2024):
+        if saving_sessions_discharge and (time_of_day.month == 12 and time_of_day.year >= 2023) or (
+                time_of_day.month in [1, 2] and time_of_day.year >= 2024):
             go = (
                     time_of_day.month in [12, 1, 2]
                     and time_of_day.day in [7, 14, 21]
