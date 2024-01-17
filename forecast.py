@@ -656,8 +656,8 @@ def simulate_tariff(
             soc_delta, wh_from_grid = handle_grid_charge(agile_charge, battery, battery_today, charge_slots,
                                                          grid_charge, price['import'], soc, soc_delta, time_of_day,verbose, wh_from_grid)
 
-            soc_delta = handle_grid_discharge(
-                price['export'], grid_discharge,
+            soc_delta, wh_from_grid = handle_grid_discharge(
+                wh_from_grid, price['export'], grid_discharge,
                 highest_outgoing, saving_sessions_discharge, soc,
                 soc_delta, time_of_day, price["export"] == "agile", verbose=verbose)
             export_payment_bonus = 0
@@ -739,7 +739,7 @@ def simulate_tariff_and_store(name, **params):
     RUN_ARCHIVE.append(results)
     plot_days(results)
 
-def handle_grid_discharge(export_payment,  grid_discharge, highest_outgoing,
+def handle_grid_discharge(wh_from_grid, export_payment,  grid_discharge, highest_outgoing,
                           saving_sessions_discharge, soc, soc_delta, time_of_day, agile, verbose=False):
     if grid_discharge or saving_sessions_discharge:
         go = False
@@ -778,7 +778,7 @@ def handle_grid_discharge(export_payment,  grid_discharge, highest_outgoing,
                         "of",
                         dump_amount,
                     )
-    return soc_delta
+    return soc_delta, wh_from_grid + soc_delta
 
 
 def handle_grid_charge(agile_charge, battery, battery_today, charge_slots, grid_charge, import_cost, soc, soc_delta,
@@ -1053,8 +1053,39 @@ def plot(results_list):
     ax2.legend()
     ax4.legend()
     return f
-
-
+simulate_tariff_and_store(name='actual', actual=True, verbose=False,
+                          start=t0, end=t1, saving_sessions_discharge=True, solar=True)
+simulate_tariff_and_store(
+    name="discharge flux",
+    electricity_costs=site["tariffs"]["flux"]["kwh_costs"],
+    grid_charge=True,
+    grid_discharge=True,
+    battery=True,
+    solar=True,
+    color="yellow",
+    verbose=False,
+    saving_sessions_discharge=True,
+)
+simulate_tariff_and_store(
+    name="agile incoming and fixed outgoing",
+    electricity_costs=[
+        {
+            "start": 0,
+            "end": 24,
+            "import": "agile",
+            "export": 0.15,
+        },
+    ],
+    winter_agile_import=True,
+    grid_charge=True,
+    grid_discharge=True,
+    agile_charge=True,
+    battery=True,
+    solar=True,
+    color="blue",
+    saving_sessions_discharge=False,
+    verbose=False
+)
 simulate_tariff_and_store(
     name="agile incoming and outgoing",
     electricity_costs=[
@@ -1073,47 +1104,15 @@ simulate_tariff_and_store(
     solar=True,
     color="blue",
     saving_sessions_discharge=False,
-    verbose=True
+    verbose=False
 )
 
-simulate_tariff_and_store(
-    name="agile incoming and fixed outgoing",
-    electricity_costs=[
-        {
-            "start": 0,
-            "end": 24,
-            "import": "agile",
-            "export": 15,
-        },
-    ],
-    winter_agile_import=True,
-    grid_charge=True,
-    grid_discharge=True,
-    agile_charge=True,
-    battery=True,
-    solar=True,
-    color="blue",
-    saving_sessions_discharge=False,
-    verbose=True
-)
 
-simulate_tariff_and_store(name='actual', actual=True, verbose=False,
-                                  start=t0, end=t1, saving_sessions_discharge=True, solar=True)
 
 simulate_tariff_and_store(
      name="flexible no solar no batteries", gas_hot_water=True, verbose=False, battery=False, solar=False
 )
-simulate_tariff_and_store(
-    name="discharge flux",
-    electricity_costs=site["tariffs"]["flux"]["kwh_costs"],
-    grid_charge=True,
-    grid_discharge=True,
-    battery=True,
-    solar=True,
-    color="yellow",
-    verbose=False,
-    saving_sessions_discharge=True,
-)
+
 simulate_tariff_and_store(
     name="flux",
     electricity_costs=site["tariffs"]["flux"]["kwh_costs"],
