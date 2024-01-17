@@ -656,9 +656,10 @@ def simulate_tariff(
             soc_delta, wh_from_grid = handle_grid_charge(agile_charge, battery, battery_today, charge_slots,
                                                          grid_charge, price['import'], soc, soc_delta, time_of_day,verbose, wh_from_grid)
 
-            soc_delta = handle_grid_discharge(price['export'], grid_discharge,
-                                                       highest_outgoing, saving_sessions_discharge, soc,
-                                                       soc_delta, time_of_day,  price["export"] == "agile", verbose)
+            soc_delta = handle_grid_discharge(
+                price['export'], grid_discharge,
+                highest_outgoing, saving_sessions_discharge, soc,
+                soc_delta, time_of_day, price["export"] == "agile", verbose=verbose)
             export_payment_bonus = 0
             battery_wear_cost = battery_cost_per_wh * -min(0, soc_delta)
             electricty_cost_hh = max(0, wh_from_grid) * price['import'] / 1000
@@ -740,7 +741,7 @@ def simulate_tariff_and_store(name, **params):
 
 def handle_grid_discharge(export_payment,  grid_discharge, highest_outgoing,
                           saving_sessions_discharge, soc, soc_delta, time_of_day, agile, verbose=False):
-    if grid_discharge or saving_sessions_discharge or agile:
+    if grid_discharge or saving_sessions_discharge:
         go = False
         if saving_sessions_discharge and (time_of_day.month == 12 and time_of_day.year == 2023) or (
                 time_of_day.month in [1, 2] and time_of_day.year == 2024):
@@ -751,10 +752,7 @@ def handle_grid_discharge(export_payment,  grid_discharge, highest_outgoing,
             )
             export_payment_bonus = 4.2
         elif grid_discharge and agile:
-            go = (
-                    export_payment >= highest_outgoing[6] / 100
-                    and export_payment > 0.25
-            )
+            go = export_payment >= highest_outgoing[6] / 100
             if go and verbose:
                 print('agile discharge at', time_of_day, 'price', export_payment)
 
@@ -1058,7 +1056,7 @@ def plot(results_list):
 
 
 simulate_tariff_and_store(
-    name="agile",
+    name="agile incoming and outgoing",
     electricity_costs=[
         {
             "start": 0,
@@ -1069,13 +1067,35 @@ simulate_tariff_and_store(
     ],
     winter_agile_import=True,
     grid_charge=True,
+    grid_discharge=True,
     agile_charge=True,
     battery=True,
     solar=True,
     color="blue",
-    saving_sessions_discharge=True,
+    saving_sessions_discharge=False,
+    verbose=True
 )
 
+simulate_tariff_and_store(
+    name="agile incoming and fixed outgoing",
+    electricity_costs=[
+        {
+            "start": 0,
+            "end": 24,
+            "import": "agile",
+            "export": 15,
+        },
+    ],
+    winter_agile_import=True,
+    grid_charge=True,
+    grid_discharge=True,
+    agile_charge=True,
+    battery=True,
+    solar=True,
+    color="blue",
+    saving_sessions_discharge=False,
+    verbose=True
+)
 
 simulate_tariff_and_store(name='actual', actual=True, verbose=False,
                                   start=t0, end=t1, saving_sessions_discharge=True, solar=True)
@@ -1101,7 +1121,6 @@ simulate_tariff_and_store(
     battery=True,
     solar=True,
     color="green",
-    verbose=False,
     saving_sessions_discharge=True,
 )
 simulate_tariff_and_store(
@@ -1113,7 +1132,6 @@ simulate_tariff_and_store(
     battery=True,
     solar=True,
     color="pink",
-    verbose=False,
     saving_sessions_discharge=True,
 )
 
