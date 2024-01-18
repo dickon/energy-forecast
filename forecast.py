@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 from influxdb_client.client.write_api import SYNCHRONOUS
 
 RUN_ARCHIVE = []
+TIME_STRING_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
 site = json.load(open(os.path.expanduser("~/src/powerwallextract/site.json")))
 
@@ -24,20 +25,17 @@ tnow = datetime.datetime.strptime(
     datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S Z"), "%Y-%m-%d %H:%M:%S %z"
 )
 
-URL = site["influx"]["server"]
-
 client = influxdb_client.InfluxDBClient(
-    url=URL, token=site["influx"]["token"], org=site["influx"]["org"]
+    url=(site["influx"]["server"]), token=site["influx"]["token"], org=site["influx"]["org"]
 )
 write_api = client.write_api(write_options=SYNCHRONOUS)
 query_api = client.query_api()
-time_string_format = "%Y-%m-%dT%H:%M:%SZ"
 
 def parse_time(s):
     return datetime.datetime.strptime(s, "%Y-%m-%d %H:%M:%S %z")
 
 def time_string(dt):
-    return dt.strftime(time_string_format)
+    return dt.strftime(TIME_STRING_FORMAT)
 
 
 def do_query(
@@ -91,6 +89,7 @@ def json_cache(filename, generate, max_age_days=28):
             except:
                 print(f"unable read {filename}; generating")
                 traceback.print_exc()
+    print('generating',filename)
     data = generate()
     with open(filename, "w") as fp:
         json.dump(data, fp, indent=2)
@@ -181,6 +180,7 @@ usage_actual = {
     datetime.datetime.fromisoformat(x[0]): x[1] for x in usage_actual_text.items()
 }
 values = [x for x in usage_actual.items()]
+
 plt.figure(figsize=(12, 8))
 plt.scatter(
     [t for t, _ in values],
@@ -329,9 +329,9 @@ def generate_solar_model():
     return record
 
 
-solar_model_record = json_cache("solar_model.json", generate_solar_model, max_age_days=7)
+solar_model_record = json_cache("solar_model.json", generate_solar_model)
 solar_output_w = {
-    datetime.datetime.fromisoformat(t)
+    datetime.datetime.fromisoformat(t):v
     for (t, v) in solar_model_record["output"].items()
 }
 solar_model = solar_model_record["model"]
@@ -415,24 +415,30 @@ for t, value in tariffs['gas'].items():
 for t, value in tariffs['gas standing'].items():
     gas_tariffs_cache[(False, datetime.datetime.fromisoformat(t))] = value
 
-plt.figure(figsize=(12, 8))
 
-p = plot_model([(pos, v) for pos, v in solar_model_table.items()])
-plt.xlabel("azimuth")
-plt.ylabel("altitude")
-plt.colorbar()
+def plot_solar_azimuth_altitude_chart():
+    plt.figure(figsize=(12, 8))
+    p = plot_model([(pos, v) for pos, v in solar_model_table.items()])
+    plt.xlabel("azimuth")
+    plt.ylabel("altitude")
+    plt.colorbar()
+
 
 values = [x for x in solar_output_w.items() if x[1] > 20]
-plt.figure(figsize=(12, 8))
-plt.scatter(
-    [t for t, _ in values],
-    [t.hour + t.minute / 60 for t, _ in values],
-    s=[v / 100 for _, v in values],
-    c=[v * 2 for _, v in values],
-)
-plt.xlabel("date")
-plt.ylabel("time of day")
-plt.colorbar()
+
+
+def plot_solar_times():
+    plt.figure(figsize=(12, 8))
+    plt.scatter(
+        [t for t, _ in values],
+        [t.hour + t.minute / 60 for t, _ in values],
+        s=[v / 100 for _, v in values],
+        c=[v * 2 for _, v in values],
+    )
+    plt.xlabel("date")
+    plt.ylabel("time of day")
+    plt.colorbar()
+
 
 
 def get_daily_gas_use():
@@ -506,9 +512,6 @@ def get_daily_gas_use():
 gas_use = json_cache("gas.json", get_daily_gas_use)
 
 
-latitude = site["location"]["latitude"]
-longitude = site["location"]["longitude"]
-model_scale = 1
 actual_scale = 8860 / 7632
 battery_cost = 0  # take into account batter wear and tear if non-zero, in pounds
 battery_lifetime_wh = 37.8e6 * 2
@@ -519,7 +522,6 @@ battery_efficiency = 0.9
 discharge_threshold = 0.48
 discharge_price_floor = 0.27
 discharge_rate_w = 10000
-extra_verbose = False
 battery_cost_per_wh = battery_cost / battery_lifetime_wh
 print(f"battery cost per kwh=£{battery_cost_per_wh*1e3}")
 
@@ -636,7 +638,7 @@ def simulate_tariff(
             if verbose:
                 print(f"{time_of_day} net electrical requirement {net_use}Wh")
             price = work_out_prices_now(electricity_costs_today, name, time_of_day,
-                                                                     verbose, winter_agile_import)
+                                        verbose, winter_agile_import, saving_sessions_discharge)
             if hh == 0:
                 gas_kwh_day = gas_use.get(tmodel.strftime("%Y-%m-%d"), 0) / 1000 + (
                     10 if gas_hot_water_saving_active else 0
@@ -738,18 +740,20 @@ def simulate_tariff_and_store(name, **params):
     RUN_ARCHIVE.append(results)
     plot_days(results)
 
+def in_savings_session(time_of_day):
+    return ((time_of_day.month == 12 and time_of_day.year >= 2023) or (
+            time_of_day.month in [1, 2] and time_of_day.year >= 2024)) and (
+                time_of_day.month in [12, 1, 2]
+                and time_of_day.day in [7, 14, 21]
+                and (time_of_day.hour == 17 or (time_of_day.hour == 18 and time_of_day.minute < 30))
+        )
+
 def handle_grid_discharge(wh_from_grid, export_payment,  grid_discharge, highest_outgoing,
                           saving_sessions_discharge, soc, soc_delta, time_of_day, agile, verbose=False):
     if grid_discharge or saving_sessions_discharge:
         go = False
-        if saving_sessions_discharge and (time_of_day.month == 12 and time_of_day.year >= 2023) or (
-                time_of_day.month in [1, 2] and time_of_day.year >= 2024):
-            go = (
-                    time_of_day.month in [12, 1, 2]
-                    and time_of_day.day in [7, 14, 21]
-                    and (time_of_day.hour == 17 or (time_of_day.hour == 18 and time_of_day.minute < 30))
-            )
-            export_payment_bonus = 4.2
+        if saving_sessions_discharge and in_savings_session(time_of_day):
+            go = True
         elif grid_discharge and agile:
             go = export_payment >= highest_outgoing[6] / 100
             if go and verbose:
@@ -886,7 +890,8 @@ def compare_with_bills(day_cost_map):
             print('\t\texpected', bill.get(field), 'actual', day_cost[field])
 
 
-def work_out_prices_now(electricity_costs_today, name, time_of_day, verbose, winter_agile_import):
+def work_out_prices_now(electricity_costs_today, name, time_of_day, verbose=False, winter_agile_import=False,
+                        savings_session_discharge=False):
     price_matches = [
         price
         for price in electricity_costs_today
@@ -914,6 +919,8 @@ def work_out_prices_now(electricity_costs_today, name, time_of_day, verbose, win
     #         price['export'] = export_payment
     if time_of_day < t_solar_export_payments_start:
         price['export'] = 0
+    if savings_session_discharge and in_savings_session(time_of_day):
+        price['export'] += 4.2
     return price
 
 
@@ -934,14 +941,11 @@ def work_out_solar_production(solar, solar_output_w_count, time_of_day, verbose)
     pos = get_solar_position_index(time_of_day)
     if not solar:
         solar_prod_kwh_hh = 0
-        solar_real = False
     else:
         if time_of_day in solar_output_w:
-            solar_prod_kwh_hh = solar_output_w[time_of_day] * actual_scale
+            solar_prod_kwh_hh = solar_output_w[time_of_day] * site['solar'].get('actual_scale_output',1) / site['solar'].get('model_scale_output', 1)
             solar_output_w_count += 1
-            solar_real = True
         else:
-            solar_real = False
             solar_prod_kwh_hh = 0 if pos[0] <= 0 else solar_model_table.get(pos, 0)
             # print('estimated solar production', solar_prod_kwh_hh, 'at',t1, pos)
     if verbose:
@@ -1053,9 +1057,8 @@ def plot(results_list):
     ax4.legend()
     return f
 
-simulate_tariff_and_store(name='actual', actual=True, verbose=False,
-                          start=t0, end=t1, saving_sessions_discharge=True, solar=True)
-assert 0
+simulate_tariff_and_store(name='actual', actual=True, verbose=False, grid_charge=True,
+                          start=t0, end=t1, grid_discharge=True, saving_sessions_discharge=True, solar=True)
 simulate_tariff_and_store(
     name="discharge flux",
     electricity_costs=site["tariffs"]["flux"]["kwh_costs"],
