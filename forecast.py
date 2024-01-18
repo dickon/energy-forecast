@@ -1068,7 +1068,7 @@ simulate_tariff_and_store(
     solar=True,
     color="yellow",
     verbose=False,
-    saving_sessions_discharge=True,
+    saving_sessions_discharge=False,
 )
 simulate_tariff_and_store(
     name="agile incoming and fixed outgoing",
@@ -1080,14 +1080,13 @@ simulate_tariff_and_store(
             "export": 0.15,
         },
     ],
-    winter_agile_import=True,
     grid_charge=True,
     grid_discharge=True,
     agile_charge=True,
     battery=True,
     solar=True,
     color="blue",
-    saving_sessions_discharge=False,
+    saving_sessions_discharge=True,
     verbose=False
 )
 simulate_tariff_and_store(
