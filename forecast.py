@@ -33,6 +33,8 @@ write_api = client.write_api(write_options=SYNCHRONOUS)
 query_api = client.query_api()
 time_string_format = "%Y-%m-%dT%H:%M:%SZ"
 
+def parse_time(s):
+    return datetime.datetime.strptime(s, "%Y-%m-%d %H:%M:%S %z")
 
 def time_string(dt):
     return dt.strftime(time_string_format)
@@ -242,13 +244,8 @@ def generate_solar_model():
     solar_output_w = {}
     solar_pos_model = {}
     base = None
-    t = tcommission = datetime.datetime.strptime(
-        site["solar"]["commission_date"], "%Y-%m-%d %H:%M:%S %z"
-    )
-    # t = tnow - datetime.timedelta(hours=240)
-    tbad0 = datetime.datetime.strptime("2023-08-11 00:00:00 Z", "%Y-%m-%d %H:%M:%S %z")
-    tbad1 = datetime.datetime.strptime("2023-08-19 00:00:00 Z", "%Y-%m-%d %H:%M:%S %z")
-
+    t = tcommission = parse_time(site["solar"]["commission_date"])
+    exclusions = [ (parse_time(rec['start']), parse_time(rec['end'])) for rec in site['solar']['data_exclusions'] ]
     while t < tnow:
         usage = None
         if t > txover:
@@ -270,14 +267,17 @@ def generate_solar_model():
                 values = [-x["_value"] for x in resl]
                 if values and values[0] > 10:
                     usage = values[0]
-        if usage and (t < tbad0 or t > tbad1) and usage > 0:
-            pos = get_solar_position_index(t)
-            if pos[0] >= 0:
-                solar_pos_model.setdefault(pos, list())
-                solar_pos_model[pos].append(usage / 2)
-
-            solar_output_w[t.isoformat()] = usage / 2
-
+        if usage and usage > 0:
+            excluded = False
+            for ex_start, ex_end in exclusions:
+                if t >= ex_start and t <= ex_end:
+                    excluded = True
+            if not excluded:
+                pos = get_solar_position_index(t)
+                if pos[0] >= 0:
+                    solar_pos_model.setdefault(pos, list())
+                    solar_pos_model[pos].append(usage / 2)
+                solar_output_w[t.isoformat()] = usage / 2
         t = t + datetime.timedelta(minutes=30)
 
     solar_model_table = dict()
@@ -326,13 +326,12 @@ def generate_solar_model():
             if pos[0] >= 0
         ],
     }
-    pprint.pprint(record)
     return record
 
 
-solar_model_record = json_cache("solar_model.json", generate_solar_model)
+solar_model_record = json_cache("solar_model.json", generate_solar_model, max_age_days=7)
 solar_output_w = {
-    datetime.datetime.fromisoformat(t): v
+    datetime.datetime.fromisoformat(t)
     for (t, v) in solar_model_record["output"].items()
 }
 solar_model = solar_model_record["model"]
@@ -1053,8 +1052,10 @@ def plot(results_list):
     ax2.legend()
     ax4.legend()
     return f
+
 simulate_tariff_and_store(name='actual', actual=True, verbose=False,
                           start=t0, end=t1, saving_sessions_discharge=True, solar=True)
+assert 0
 simulate_tariff_and_store(
     name="discharge flux",
     electricity_costs=site["tariffs"]["flux"]["kwh_costs"],
