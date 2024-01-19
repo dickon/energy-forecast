@@ -5,6 +5,7 @@ import os.path
 import pprint
 import pysolar
 import random
+from functools import cache
 import traceback
 import influxdb_client
 import matplotlib.pyplot as plt
@@ -13,7 +14,10 @@ from influxdb_client.client.write_api import SYNCHRONOUS
 RUN_ARCHIVE = []
 TIME_STRING_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
-site = json.load(open(os.path.expanduser("~/src/powerwallextract/site.json")))
+AZIMUTH_RESOLUTION = 3
+ALTITUDE_RESOLUTION = 1
+
+SITE = json.load(open(os.path.expanduser("~/src/powerwallextract/site.json")))
 
 t0 = datetime.datetime.strptime(
     "2023-01-01 00:00:00 Z", "%Y-%m-%d %H:%M:%S %z"
@@ -25,18 +29,25 @@ tnow = datetime.datetime.strptime(
     datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S Z"), "%Y-%m-%d %H:%M:%S %z"
 )
 
-client = influxdb_client.InfluxDBClient(
-    url=(site["influx"]["server"]), token=site["influx"]["token"], org=site["influx"]["org"]
-)
-write_api = client.write_api(write_options=SYNCHRONOUS)
-query_api = client.query_api()
-
 def parse_time(s):
     return datetime.datetime.strptime(s, "%Y-%m-%d %H:%M:%S %z")
 
 def time_string(dt):
     return dt.strftime(TIME_STRING_FORMAT)
 
+
+@cache
+def open_influx():
+    client = influxdb_client.InfluxDBClient(
+        url=(SITE["influx"]["server"]), token=SITE["influx"]["token"], org=SITE["influx"]["org"]
+    )
+    write_api = client.write_api(write_options=SYNCHRONOUS)
+    query_api = client.query_api()
+    return (write_api, query_api)
+
+@cache
+def open_influx_query():
+    return open_influx()[1]
 
 def do_query(
     query: str,
@@ -57,7 +68,7 @@ def do_query(
     start = time.time()
     if verbose:
         print(fquery)
-    resl = query_api.query(org=site["influx"]["org"], query=fquery)
+    resl = open_influx_query().query(org=SITE["influx"]["org"], query=fquery)
     end = time.time()
     delay = end - start
 
@@ -181,44 +192,41 @@ usage_actual = {
 }
 values = [x for x in usage_actual.items()]
 
-plt.figure(figsize=(12, 8))
-plt.scatter(
-    [t for t, _ in values],
-    [t.hour + t.minute / 60 for t, _ in values],
-    s=[v / 100 for _, v in values],
-    c=[v / 100 for _, v in values],
-)
+
+def plot_usage_scatter():
+    plt.figure(figsize=(12, 8))
+    plt.scatter(
+        [t for t, _ in values],
+        [t.hour + t.minute / 60 for t, _ in values],
+        s=[v / 100 for _, v in values],
+        c=[v / 100 for _, v in values],
+    )
 
 
-import matplotlib.pyplot as plt
-import math
-import datetime
-
-azi_resolution = 3
-alt_resolution = 1
+plot_usage_scatter()
 
 
 def get_solar_position_index(t):
     altitude = pysolar.solar.get_altitude(
-        site["location"]["latitude"],
-        site["location"]["longitude"],
+        SITE["location"]["latitude"],
+        SITE["location"]["longitude"],
         t + datetime.timedelta(minutes=15),
     )
     azimuth = pysolar.solar.get_azimuth(
-        site["location"]["latitude"],
-        site["location"]["longitude"],
+        SITE["location"]["latitude"],
+        SITE["location"]["longitude"],
         t + datetime.timedelta(minutes=15),
     )
-    return alt_resolution * round(altitude / alt_resolution), azi_resolution * round(
-        azimuth / azi_resolution
+    return ALTITUDE_RESOLUTION * round(altitude / ALTITUDE_RESOLUTION), AZIMUTH_RESOLUTION * round(
+        azimuth / AZIMUTH_RESOLUTION
     )
 
 
 txover = datetime.datetime.strptime(
-    site["powerwall"]["commission_date"], "%Y-%m-%d %H:%M:%S %z"
+    SITE["powerwall"]["commission_date"], "%Y-%m-%d %H:%M:%S %z"
 )
 t_solar_export_payments_start = datetime.datetime.strptime(
-    site["solar"]["export_payments_start_date"], "%Y-%m-%d %H:%M:%S %z"
+    SITE["solar"]["export_payments_start_date"], "%Y-%m-%d %H:%M:%S %z"
 )
 
 def query_solar(t):
@@ -244,8 +252,8 @@ def generate_solar_model():
     solar_output_w = {}
     solar_pos_model = {}
     base = None
-    t = tcommission = parse_time(site["solar"]["commission_date"])
-    exclusions = [ (parse_time(rec['start']), parse_time(rec['end'])) for rec in site['solar']['data_exclusions'] ]
+    t = tcommission = parse_time(SITE["solar"]["commission_date"])
+    exclusions = [(parse_time(rec['start']), parse_time(rec['end'])) for rec in SITE['solar']['data_exclusions']]
     while t < tnow:
         usage = None
         if t > txover:
@@ -284,8 +292,8 @@ def generate_solar_model():
     for pos, powl in solar_pos_model.items():
         solar_model_table[repr(pos)] = sum(powl) / len(powl)
 
-    for azi in range(0, 360, azi_resolution):
-        for alt in range(0, 70, alt_resolution):
+    for azi in range(0, 360, AZIMUTH_RESOLUTION):
+        for alt in range(0, 70, ALTITUDE_RESOLUTION):
             pos = (alt, azi)
             if pos not in solar_pos_model:
                 mindist = None
@@ -529,7 +537,7 @@ print(f"battery cost per kwh=£{battery_cost_per_wh*1e3}")
 def get_agile(t, outgoing=False):
     y = t.year - 2023
     if y > 0 :
-        markup = site['tariffs']['agile']['scale']**y
+        markup = SITE['tariffs']['agile']['scale'] ** y
         if t.day == 29 and t.month == 2:
             t = t.replace(day=28)
         t = t.replace(year=2023)
@@ -590,7 +598,7 @@ def simulate_tariff(
     hh_count = 0
     soc_daily_lows = []
     day_costs = []
-    battery_commision_date = datetime.datetime.strptime(site['powerwall']['commission_date'], '%Y-%m-%d %H:%M:%S %z')
+    battery_commision_date = datetime.datetime.strptime(SITE['powerwall']['commission_date'], '%Y-%m-%d %H:%M:%S %z')
     t = start
     for day in range((end - start).days):
         tday = t + datetime.timedelta(days=day)
@@ -752,14 +760,14 @@ def handle_grid_discharge(wh_from_grid, export_payment,  grid_discharge, highest
                           saving_sessions_discharge, soc, soc_delta, time_of_day, agile, verbose=False):
     if grid_discharge or saving_sessions_discharge:
         go = False
-        if saving_sessions_discharge and in_savings_session(time_of_day):
-            go = True
+        if saving_sessions_discharge:
+            go = in_savings_session(time_of_day)
         elif grid_discharge and agile:
             go = export_payment >= highest_outgoing[6] / 100
             if go and verbose:
                 print('agile discharge at', time_of_day, 'price', export_payment)
 
-        elif grid_discharge:
+        elif grid_discharge and not saving_sessions_discharge:
             go = export_payment >= discharge_price_floor
         if go:
             if verbose:
@@ -870,7 +878,7 @@ def handle_energy_supply(battery_today, net_use, soc, time_of_day, verbose):
 
 
 def compare_with_bills(day_cost_map):
-    for bill in site['bills']:
+    for bill in SITE['bills']:
         start = datetime.datetime.strptime(bill['start'], '%Y-%m-%d').date()
         end = datetime.datetime.strptime(bill['end'], '%Y-%m-%d').date()
         total = 0
@@ -943,7 +951,7 @@ def work_out_solar_production(solar, solar_output_w_count, time_of_day, verbose)
         solar_prod_kwh_hh = 0
     else:
         if time_of_day in solar_output_w:
-            solar_prod_kwh_hh = solar_output_w[time_of_day] * site['solar'].get('actual_scale_output',1) / site['solar'].get('model_scale_output', 1)
+            solar_prod_kwh_hh = solar_output_w[time_of_day] * SITE['solar'].get('actual_scale_output', 1) / SITE['solar'].get('model_scale_output', 1)
             solar_output_w_count += 1
         else:
             solar_prod_kwh_hh = 0 if pos[0] <= 0 else solar_model_table.get(pos, 0)
@@ -981,7 +989,7 @@ def work_out_prices_today(actual, electricity_costs, tday, verbose=False):
     gas_kwh_cost = gas_tariffs_cache.get((True, tday.strftime('%Y-%m-%d')))
     found = None
     electricity_costs_today = electricity_costs
-    for tariff in site['tariff_history']:
+    for tariff in SITE['tariff_history']:
         tstart = datetime.datetime.strptime(tariff['start'], '%Y-%m-%d')
         tend = datetime.datetime.strptime(tariff['end'], '%Y-%m-%d')
         gname = 'gas latest'
@@ -990,7 +998,7 @@ def work_out_prices_today(actual, electricity_costs, tday, verbose=False):
             gname = tariff.get('gas_tariff')
             if actual and tname:
                 electricity_costs_today = []
-                for period in site['tariffs'][tname]['kwh_costs']:
+                for period in SITE['tariffs'][tname]['kwh_costs']:
                     electricity_costs_today.append({
                         "start": period['start'],
                         "end": period['end'],
@@ -999,8 +1007,8 @@ def work_out_prices_today(actual, electricity_costs, tday, verbose=False):
                     })
                 found = tname
         # reconcile site.json values with database
-        gas_kwh_cost_declared = site['tariffs'][gname]['kwh_costs']['import']
-        gas_sc_cost_declared = site['tariffs'][gname]['standing']
+        gas_kwh_cost_declared = SITE['tariffs'][gname]['kwh_costs']['import']
+        gas_sc_cost_declared = SITE['tariffs'][gname]['standing']
         if 'ovo' not in gname:
             if gas_kwh_cost is not None and gas_kwh_cost != gas_kwh_cost_declared:
                 print(f'WARNING: declared gas kwh cost={gas_kwh_cost_declared} != database value {gas_kwh_cost} on {tday}' )
@@ -1061,7 +1069,7 @@ simulate_tariff_and_store(name='actual', actual=True, verbose=False, grid_charge
                           start=t0, end=t1, grid_discharge=True, saving_sessions_discharge=True, solar=True)
 simulate_tariff_and_store(
     name="discharge flux",
-    electricity_costs=site["tariffs"]["flux"]["kwh_costs"],
+    electricity_costs=SITE["tariffs"]["flux"]["kwh_costs"],
     grid_charge=True,
     grid_discharge=True,
     battery=True,
@@ -1118,7 +1126,7 @@ simulate_tariff_and_store(
 
 simulate_tariff_and_store(
     name="flux",
-    electricity_costs=site["tariffs"]["flux"]["kwh_costs"],
+    electricity_costs=SITE["tariffs"]["flux"]["kwh_costs"],
     grid_charge=True,
     battery=True,
     solar=True,
@@ -1127,7 +1135,7 @@ simulate_tariff_and_store(
 )
 simulate_tariff_and_store(
     name="winter agile",
-    electricity_costs=site["tariffs"]["flux"]["kwh_costs"],
+    electricity_costs=SITE["tariffs"]["flux"]["kwh_costs"],
     winter_agile_import=True,
     grid_charge=True,
     agile_charge=True,
