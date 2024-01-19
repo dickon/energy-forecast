@@ -424,13 +424,17 @@ for t, value in tariffs['gas standing'].items():
     gas_tariffs_cache[(False, datetime.datetime.fromisoformat(t))] = value
 
 
-def plot_solar_azimuth_altitude_chart():
+def plot_solar_azimuth_altitude_chart(solar_model_table):
     plt.figure(figsize=(12, 8))
     p = plot_model([(pos, v) for pos, v in solar_model_table.items()])
+    plt.title("solar AC output power over 30 minutes")
     plt.xlabel("azimuth")
     plt.ylabel("altitude")
     plt.colorbar()
+    return plt
 
+p = plot_solar_azimuth_altitude_chart(solar_model_table)
+p.show()
 
 values = [x for x in solar_output_w.items() if x[1] > 20]
 
