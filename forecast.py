@@ -32,6 +32,10 @@ tnow = datetime.datetime.strptime(
 def parse_time(s):
     return datetime.datetime.strptime(s, "%Y-%m-%d %H:%M:%S %z")
 
+
+EPOCH = parse_time('1975-01-01 00:00:00 Z')
+
+
 def time_string(dt):
     return dt.strftime(TIME_STRING_FORMAT)
 
@@ -87,7 +91,7 @@ def do_query(
     return resl[0]
 
 
-def json_cache(filename, generate, max_age_days=28):
+def json_cache(filename, generate, max_age_days=1):
     if os.path.exists(filename):
         mtime = os.stat(filename).st_mtime
         mtime_date = datetime.datetime.fromtimestamp(mtime)
@@ -109,74 +113,49 @@ def json_cache(filename, generate, max_age_days=28):
 
 def generate_mean_time_of_day():
     usage_actual = {}
-    txover = datetime.datetime.strptime("2023-07-30 00:00:00 Z", "%Y-%m-%d %H:%M:%S %z")
-    t = t0
-
-    def query_usage(t):
-        end_of_hh = t + datetime.timedelta(minutes=29)
-        if (
-            t.month == 8 and (t.day > 12 and t.day < 24) or t.day == 8 or t.day == 7
-        ) or (t.month == 7 and t.day in range(27, 32)):
-            return None, False
-        if t < txover:
-            res = do_query(
-                """|> filter(fn: (r) => r["_measurement"] == "energy_usage")
-            |> filter(fn: (r) => r["_field"] == "usage")
-            |> filter(fn: (r) => r["account_name"] == "Primary Residence")
-            |> filter(fn: (r) => r["detailed"] == "False")
-            |> filter(fn: (r) => r["device_name"] == "Home-TotalUsage")
-            |> filter(fn: (r) => r._value > 0.0)
-            |> aggregateWindow(every: 30m, fn: mean, createEmpty: false)
-            |> yield(name: "last")""",
-                "vue",
-                t,
-                end_of_hh,
-            )
-            abs = True
-        else:
-            res = do_query(
-                """
+    time_of_day = {}
+    print('querying vue data')
+    for res in do_query(
+        """|> filter(fn: (r) => r["_measurement"] == "energy_usage")
+    |> filter(fn: (r) => r["_field"] == "usage")
+    |> filter(fn: (r) => r["account_name"] == "Primary Residence")
+    |> filter(fn: (r) => r["detailed"] == "False")
+    |> filter(fn: (r) => r["device_name"] == "Home-TotalUsage")
+    |> filter(fn: (r) => r._value > 0.0)
+    |> aggregateWindow(every: 30m, fn: mean, createEmpty: false)
+    """,
+        "vue",
+            EPOCH,
+        tnow
+     ):
+        usage = res['_value']/2
+        t = res['_time']
+        record_usage(t, time_of_day, usage, usage_actual)
+    print('querying powerwall data')
+    prev = None
+    prevt = None
+    for res in  do_query("""
             |> filter(fn: (r) => r["_measurement"] == "energy")
             |> filter(fn: (r) => r["_field"] == "energy_imported")
-            |> filter(fn: (r) => r["meter"] == "load") |> last() """,
+            |> filter(fn: (r) => r["meter"] == "load")
+            |> window(every: 30m)
+            |> last()
+            |> duplicate(column: "_stop", as: "_time")
+            |> window(every: inf)
+             """,
                 "powerwall",
-                t,
-                end_of_hh,
-            )
-            abs = False
-        if res == []:
-            return None, abs
-        data = [(x["_stop"], x["_value"]) for x in res]
+                 EPOCH, tnow):
 
-        if (data[0][0] - t).seconds < 1800:
-            return data[0][1], abs
-        else:
-            return None, abs
+        t = res['_time']
+        value = res['_value']
 
-    time_of_day = {}
-    base = None
-    base_t = None
-
-    while t < tnow:
-        now, abs = query_usage(t)
-        if abs:
-            usage = now / 2 if now else 0
-        else:
-            if now:
-                if base and t - base_t < datetime.timedelta(minutes=60):
-                    usage = now - base
-                else:
-                    usage = None
-                base = now
-                base_t = t
-            else:  #
-                usage = None
-        t = t + datetime.timedelta(minutes=30)
-        if usage is not None and usage > 10:
-            tday = f"{t.hour:02d}:{t.minute:02d}"
-            time_of_day.setdefault(tday, list())
-            time_of_day[tday].append(usage)
-            usage_actual[t.isoformat()] = usage
+        if prevt:
+            deltat = (t-prevt)
+            if deltat.seconds == 1800:
+                usage = value - prev
+                record_usage(t, time_of_day, usage, usage_actual)
+        prevt = t
+        prev = value
 
     return {
         "mean_time_of_day": [(t, sum(x) / len(x)) for (t, x) in time_of_day.items()],
@@ -184,7 +163,13 @@ def generate_mean_time_of_day():
     }
 
 
-data = json_cache("kwh_use_time_of_day.json", generate_mean_time_of_day)
+def record_usage(t, time_of_day, usage, usage_actual):
+    usage_actual[t.isoformat()] = usage
+    tday = f"{t.hour:02d}:{t.minute:02d}"
+    time_of_day.setdefault(tday, list()).append(usage)
+
+
+data = json_cache("kwh_use_time_of_day.json", generate_mean_time_of_day, max_age_days=0)
 mean_time_of_day = data["mean_time_of_day"]
 usage_actual_text = data["usage_actual"]
 usage_actual = {
