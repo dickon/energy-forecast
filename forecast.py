@@ -3,6 +3,7 @@ import json
 import matplotlib
 import os.path
 import pprint
+import math
 import pysolar
 import random
 from functools import cache
