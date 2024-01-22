@@ -324,7 +324,7 @@ solar_model = solar_model_record["model"]
 solar_model_table = {eval(k): v for k, v in solar_model_record["table"].items()}
 
 
-data = json_cache("kwh_use_time_of_day.json", generate_mean_time_of_day, max_age_days=0)
+data = json_cache("kwh_use_time_of_day.json", generate_mean_time_of_day)
 mean_time_of_day = data["mean_time_of_day"]
 usage_actual_text = data["usage_actual"]
 usage_actual = {
