@@ -2,15 +2,15 @@ import datetime
 import json
 import matplotlib
 import os.path
-import pprint
 import math
+import sys
 import pysolar
-import random
 from functools import cache
 import traceback
 import influxdb_client
 import matplotlib.pyplot as plt
 from influxdb_client.client.write_api import SYNCHRONOUS
+from statistics import mean, median
 
 RUN_ARCHIVE = []
 TIME_STRING_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
@@ -159,7 +159,7 @@ def generate_mean_time_of_day():
         prev = value
 
     return {
-        "mean_time_of_day": [(t, sum(x) / len(x)) for (t, x) in time_of_day.items()],
+        "mean_time_of_day": [(t, mean(x)) for (t, x) in time_of_day.items()],
         "usage_actual": usage_actual,
     }
 
@@ -209,16 +209,20 @@ def generate_solar_model():
     t = tcommission = parse_time(SITE["solar"]["commission_date"])
     exclusions = [(parse_time(rec['start']), parse_time(rec['end'])) for rec in SITE['solar']['data_exclusions']]
     def populate(t, usage):
+        pos = get_solar_position_index(t)
         excluded = False
         for ex_start, ex_end in exclusions:
             if t >= ex_start and t <= ex_end:
                 excluded = True
+        if pos[0] >= 40 and usage < 1500:
+            excluded = True
+        if pos[0] > 50:
+            print(t, pos, usage, excluded)
         if not excluded:
-            pos = get_solar_position_index(t)
-            if pos[0] >= 0:
+            if pos[0] >= 0 and usage > 100:
                 solar_pos_model.setdefault(pos, list())
                 solar_pos_model[pos].append(usage)
-            solar_output_w[t.isoformat()] = usage / 2
+            solar_output_w[t.isoformat()] = usage
 
     prev = None
     prevt = None
@@ -246,6 +250,7 @@ def generate_solar_model():
                 populate(t, usage)
         prevt = t
         prev = value
+    print('querying vue data')
     for res in do_query(
             """
             |> filter(fn: (r) => r["_field"] == "usage")
@@ -263,33 +268,24 @@ def generate_solar_model():
         solar_model_table[repr(pos)] = sum(powl) / len(powl)
 
     for azi in range(0, 360, AZIMUTH_RESOLUTION):
+        res = []
         for alt in range(0, 70, ALTITUDE_RESOLUTION):
             pos = (alt, azi)
-            if pos not in solar_pos_model:
-                mindist = None
+            mindist = None
             minv = None
             for altpos, powl in solar_pos_model.items():
                 dist = math.sqrt(
                     (altpos[0] - pos[0]) ** 2 * 10 + (altpos[1] - pos[1]) ** 2
                 )
-                if mindist is None or dist < mindist:
+                avg = mean(powl)
+                if not(avg < 2000 and altpos[0] > 30 and altpos[1] > 180) and (mindist is None or dist < mindist):
                     minv = powl
-            assert minv is not None
-            mindist = dist
-            solar_pos_model[pos] = minv
+                    mindist = dist
+            if minv:
+                assert minv is not None
+                res.append(mean(minv))
+        print('smoothing azimuth', azi ,mean(res) if res else 0)
 
-    # backfill the gaps
-    t = tcommission
-    while t < tnow:
-        t_iso = t.isoformat()
-        pos = get_solar_position_index(t)
-        if t_iso not in solar_output_w:
-            if pos[0] < 0:
-                solar_output_w[t_iso] = 0
-            else:
-                values = solar_pos_model.get(pos, [])
-                solar_output_w[t_iso] = sum(values) / len(values) if values else 0
-        t = t + datetime.timedelta(minutes=30)
 
     record = {
         "table": solar_model_table,
@@ -297,7 +293,7 @@ def generate_solar_model():
         "model": [
             (
                 repr(pos),
-                sum(solar_pos_model[pos]) / len(solar_pos_model[pos]),
+                median(solar_pos_model[pos]),
                 len(solar_pos_model[pos]),
             )
             for pos in sorted(solar_pos_model.keys())
@@ -332,7 +328,8 @@ usage_actual = {
 }
 values = [x for x in usage_actual.items()]
 
-plot_usage_scatter()
+if 'usage' in sys.argv:
+    plot_usage_scatter()
 
 def plot_model(m):
     altitude = [x[0][0] for x in m]
@@ -421,8 +418,8 @@ def plot_solar_azimuth_altitude_chart(solar_model_table):
     plt.colorbar()
     return plt
 
-p = plot_solar_azimuth_altitude_chart(solar_model_table)
-p.show()
+if 'solar' in sys.argv or True:
+    plot_solar_azimuth_altitude_chart(solar_model_table).show()
 
 values = [x for x in solar_output_w.items() if x[1] > 20]
 
@@ -538,7 +535,6 @@ def get_agile(t, outgoing=False):
     if v is not None:
         return v*markup
     print("miss", t, outgoing)
-    assert 0
 
 
 usage_model = {t: u for (t, u) in mean_time_of_day}
@@ -586,7 +582,6 @@ def simulate_tariff(
     day_cost_map = {}
     halfhours = []
     soc_series = []
-    solar_output_w_count = 0
     hh_count = 0
     soc_daily_lows = []
     day_costs = []
@@ -620,7 +615,7 @@ def simulate_tariff(
         for hh in range(48):
             hh_count += 1
             time_of_day = tday + datetime.timedelta(minutes=hh * 30)
-            pos, solar_prod_wh_hh = work_out_solar_production(solar, solar_output_w_count, time_of_day, verbose)
+            pos, solar_prod_wh_hh, _ = work_out_solar_production(time_of_day, verbose=verbose,solar=solar)
             solar_prod_total += solar_prod_wh_hh
             solar_today += solar_prod_wh_hh
             kwh += solar_prod_wh_hh
@@ -781,7 +776,8 @@ def handle_grid_discharge(wh_from_grid, export_payment,  grid_discharge, highest
                         "of",
                         dump_amount,
                     )
-    return soc_delta, wh_from_grid + soc_delta
+                return soc_delta, wh_from_grid + dump_amount
+    return soc_delta, wh_from_grid
 
 
 def handle_grid_charge(agile_charge, battery, battery_today, charge_slots, grid_charge, import_cost, soc, soc_delta,
@@ -792,8 +788,7 @@ def handle_grid_charge(agile_charge, battery, battery_today, charge_slots, grid_
         )
     else:
         grid_charge_now = (
-                time_of_day.hour >= 2 and time_of_day.hour < 5 and grid_charge and battery
-        )
+                time_of_day.hour >= 2 and time_of_day.hour < 5 and grid_charge and battery) and time_of_day.month in [1,2,10,11,12]
     if grid_charge_now and battery_today:
         wh_from_grid += max(0, (
                 min(
@@ -937,21 +932,58 @@ def work_out_electricity_usage(time_of_day, verbose):
     return usage_hh, usage_real
 
 
-def work_out_solar_production(solar, solar_output_w_count, time_of_day, verbose):
+def work_out_solar_production(time_of_day, verbose=False, solar=True, use_records=True):
     pos = get_solar_position_index(time_of_day)
     if not solar:
         solar_prod_kwh_hh = 0
+        from_record = True
     else:
-        if time_of_day in solar_output_w:
-            solar_prod_kwh_hh = solar_output_w[time_of_day] * SITE['solar'].get('actual_scale_output', 1) / SITE['solar'].get('model_scale_output', 1)
-            solar_output_w_count += 1
+        if time_of_day in solar_output_w and use_records:
+            solar_prod_kwh_hh = solar_output_w[time_of_day]
+            from_record = True
         else:
-            solar_prod_kwh_hh = 0 if pos[0] <= 0 else solar_model_table.get(pos, 0)
-            # print('estimated solar production', solar_prod_kwh_hh, 'at',t1, pos)
+            solar_prod_kwh_hh = (0 if pos[0] <= 0 else solar_model_table.get(pos, 0)) * SITE['solar'].get('actual_scale_output', 1) / SITE['solar'].get('model_scale_output', 1)
+            from_record = False
     if verbose:
         print(time_of_day, "solar position", pos, "solar production", solar_prod_kwh_hh)
-    return pos, solar_prod_kwh_hh
+    return pos, solar_prod_kwh_hh, from_record
 
+def plot_solar_production(start="2023-01-01 00:00:00 Z", end="2025-01-01 00:00:00 Z"):
+    t = datetime.datetime.strptime(
+        start, "%Y-%m-%d %H:%M:%S %z"
+    )
+    end = datetime.datetime.strptime(end,
+        "%Y-%m-%d %H:%M:%S %z"
+    )
+    series_real = []
+    series_model = []
+    series_t = []
+    while t < end:
+        for use_records in [False, True]:
+            wh_day = 0
+
+            all_from_records = True
+            for hh in range(48):
+                time_of_day = t + datetime.timedelta(minutes=30*hh)
+                pos, wh_hh, from_records = work_out_solar_production(time_of_day, use_records=use_records)
+                if not from_records:
+                    all_from_records = False
+                wh_day += wh_hh
+
+            if use_records:
+                series_real.append(wh_day/1000 if all_from_records else 0)
+            else:
+                series_model.append(wh_day/1000)
+        series_t.append(t)
+        t += datetime.timedelta(days=1)
+    plt.plot(series_t, series_real, label='real readings')
+    plt.plot(series_t, series_model, label='model')
+    plt.xlabel("date")
+    plt.ylabel("daily kWh output")
+    plt.legend()
+    plt.show()
+
+plot_solar_production()
 
 def work_out_agile_charge_slots(slots, verbose):
     agile_series = [(get_agile(x), x) for x in slots]
