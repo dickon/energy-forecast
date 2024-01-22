@@ -92,7 +92,7 @@ def do_query(
     return resl[0]
 
 
-def json_cache(filename, generate, max_age_days=1):
+def json_cache(filename, generate, max_age_days=7):
     if os.path.exists(filename):
         mtime = os.stat(filename).st_mtime
         mtime_date = datetime.datetime.fromtimestamp(mtime)
@@ -170,14 +170,6 @@ def record_usage(t, time_of_day, usage, usage_actual):
     time_of_day.setdefault(tday, list()).append(usage)
 
 
-data = json_cache("kwh_use_time_of_day.json", generate_mean_time_of_day, max_age_days=0)
-mean_time_of_day = data["mean_time_of_day"]
-usage_actual_text = data["usage_actual"]
-usage_actual = {
-    datetime.datetime.fromisoformat(x[0]): x[1] for x in usage_actual_text.items()
-}
-values = [x for x in usage_actual.items()]
-
 
 def plot_usage_scatter():
     plt.figure(figsize=(12, 8))
@@ -188,8 +180,6 @@ def plot_usage_scatter():
         c=[v / 100 for _, v in values],
     )
 
-
-plot_usage_scatter()
 
 
 def get_solar_position_index(t):
@@ -208,28 +198,6 @@ def get_solar_position_index(t):
     )
 
 
-txover = datetime.datetime.strptime(
-    SITE["powerwall"]["commission_date"], "%Y-%m-%d %H:%M:%S %z"
-)
-t_solar_export_payments_start = datetime.datetime.strptime(
-    SITE["solar"]["export_payments_start_date"], "%Y-%m-%d %H:%M:%S %z"
-)
-
-def query_solar(t):
-    res = do_query(
-        """
-    |> filter(fn: (r) => r["_measurement"] == "power")
-        |> filter(fn: (r) => r["_field"] == "instant_power")
-        |> filter(fn: (r) => r["meter"] == "solar")
-                   |> mean()
- """,
-        "powerwall",
-        t,
-        t + datetime.timedelta(minutes=30),
-    )
-    data = [(x["_stop"], x["_value"]) for x in res]
-    if data:
-        return data[0][1]
 
 
 def generate_solar_model():
@@ -240,40 +208,56 @@ def generate_solar_model():
     base = None
     t = tcommission = parse_time(SITE["solar"]["commission_date"])
     exclusions = [(parse_time(rec['start']), parse_time(rec['end'])) for rec in SITE['solar']['data_exclusions']]
-    while t < tnow:
-        usage = None
-        if t > txover:
-            usage = query_solar(t)
+    def populate(t, usage):
+        excluded = False
+        for ex_start, ex_end in exclusions:
+            if t >= ex_start and t <= ex_end:
+                excluded = True
+        if not excluded:
+            pos = get_solar_position_index(t)
+            if pos[0] >= 0:
+                solar_pos_model.setdefault(pos, list())
+                solar_pos_model[pos].append(usage)
+            solar_output_w[t.isoformat()] = usage / 2
 
-        else:
-            resl = do_query(
-                """
-                |> filter(fn: (r) => r["_field"] == "usage")
-                |> filter(fn: (r) => r["account_name"] == "Primary Residence")
-                |> filter(fn: (r) => r["detailed"] == "True")
-                |> filter(fn: (r) => r["device_name"] == "SolarEdge Inverter")
-                |> mean() """,
-                "vue",
-                t,
-                t + datetime.timedelta(minutes=29),
-            )
-            if resl:
-                values = [-x["_value"] for x in resl]
-                if values and values[0] > 10:
-                    usage = values[0]
-        if usage and usage > 0:
-            excluded = False
-            for ex_start, ex_end in exclusions:
-                if t >= ex_start and t <= ex_end:
-                    excluded = True
-            if not excluded:
-                pos = get_solar_position_index(t)
-                if pos[0] >= 0:
-                    solar_pos_model.setdefault(pos, list())
-                    solar_pos_model[pos].append(usage / 2)
-                solar_output_w[t.isoformat()] = usage / 2
-        t = t + datetime.timedelta(minutes=30)
+    prev = None
+    prevt = None
+    print('querying powerwall solar data')
+    for res in  do_query(
+            """
+        |> filter(fn: (r) => r["_measurement"] == "energy")
+            |> filter(fn: (r) => r["_field"] == "energy_exported")
+            |> filter(fn: (r) => r["meter"] == "solar")
+                |> window(every: 30m)
+                |> last()
+                |> duplicate(column: "_stop", as: "_time")
+                |> window(every: inf) """,
+            "powerwall",
+            EPOCH,
+            tnow,
+    ):
+        t = res['_time']
+        value = res['_value']
 
+        if prevt:
+            deltat = (t-prevt)
+            if deltat.seconds == 1800:
+                usage = value - prev
+                populate(t, usage)
+        prevt = t
+        prev = value
+    for res in do_query(
+            """
+            |> filter(fn: (r) => r["_field"] == "usage")
+            |> filter(fn: (r) => r["account_name"] == "Primary Residence")
+            |> filter(fn: (r) => r["detailed"] == "True")
+            |> filter(fn: (r) => r["device_name"] == "SolarEdge Inverter")
+            |> filter(fn: (r) => r._value < 0.0)
+            |> aggregateWindow(every: 30m, fn: mean, createEmpty: false)
+             """,
+            "vue", EPOCH,tnow, verbose=False,
+    ):
+        populate( res['_time'], -res['_value'] / 2)
     solar_model_table = dict()
     for pos, powl in solar_pos_model.items():
         solar_model_table[repr(pos)] = sum(powl) / len(powl)
@@ -283,15 +267,16 @@ def generate_solar_model():
             pos = (alt, azi)
             if pos not in solar_pos_model:
                 mindist = None
-                minv = None
-                for altpos, powl in solar_pos_model.items():
-                    dist = math.sqrt(
-                        (altpos[0] - pos[0]) ** 2 * 10 + (altpos[1] - pos[1]) ** 2
-                    )
-                    if mindist is None or dist < mindist:
-                        minv = powl
-                        mindist = dist
-                solar_pos_model[pos] = minv
+            minv = None
+            for altpos, powl in solar_pos_model.items():
+                dist = math.sqrt(
+                    (altpos[0] - pos[0]) ** 2 * 10 + (altpos[1] - pos[1]) ** 2
+                )
+                if mindist is None or dist < mindist:
+                    minv = powl
+            assert minv is not None
+            mindist = dist
+            solar_pos_model[pos] = minv
 
     # backfill the gaps
     t = tcommission
@@ -302,9 +287,8 @@ def generate_solar_model():
             if pos[0] < 0:
                 solar_output_w[t_iso] = 0
             else:
-                values = solar_pos_model[pos]
-                solar_output_w[t_iso] = sum(values) / len(values)
-
+                values = solar_pos_model.get(pos, [])
+                solar_output_w[t_iso] = sum(values) / len(values) if values else 0
         t = t + datetime.timedelta(minutes=30)
 
     record = {
@@ -323,6 +307,14 @@ def generate_solar_model():
     return record
 
 
+
+
+txover = datetime.datetime.strptime(
+    SITE["powerwall"]["commission_date"], "%Y-%m-%d %H:%M:%S %z"
+)
+t_solar_export_payments_start = datetime.datetime.strptime(
+    SITE["solar"]["export_payments_start_date"], "%Y-%m-%d %H:%M:%S %z"
+)
 solar_model_record = json_cache("solar_model.json", generate_solar_model)
 solar_output_w = {
     datetime.datetime.fromisoformat(t):v
@@ -331,6 +323,16 @@ solar_output_w = {
 solar_model = solar_model_record["model"]
 solar_model_table = {eval(k): v for k, v in solar_model_record["table"].items()}
 
+
+data = json_cache("kwh_use_time_of_day.json", generate_mean_time_of_day, max_age_days=0)
+mean_time_of_day = data["mean_time_of_day"]
+usage_actual_text = data["usage_actual"]
+usage_actual = {
+    datetime.datetime.fromisoformat(x[0]): x[1] for x in usage_actual_text.items()
+}
+values = [x for x in usage_actual.items()]
+
+plot_usage_scatter()
 
 def plot_model(m):
     altitude = [x[0][0] for x in m]
@@ -496,7 +498,7 @@ def get_daily_gas_use():
 
         if row["_value"] > 0:
             age_series.append((tnow - row["_time"]).days)
-            t_series.append(outt["_value"])
+            t_series.append(row["_value"])
             wh_series.append(row["_value"])
         out[row["_time"].strftime("%Y-%m-%d")] = row["_value"]
 
