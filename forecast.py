@@ -776,7 +776,7 @@ def handle_grid_discharge(wh_from_grid, export_payment,  grid_discharge, highest
                         "of",
                         dump_amount,
                     )
-                return soc_delta, wh_from_grid + dump_amount
+                return soc_delta, wh_from_grid - dump_amount
     return soc_delta, wh_from_grid
 
 
@@ -1099,7 +1099,7 @@ simulate_tariff_and_store(
     battery=True,
     solar=True,
     color="yellow",
-    verbose=False,
+    verbose=True,
     saving_sessions_discharge=False,
 )
 simulate_tariff_and_store(
