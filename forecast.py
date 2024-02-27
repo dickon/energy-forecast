@@ -30,11 +30,12 @@ tnow = datetime.datetime.strptime(
     datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S Z"), "%Y-%m-%d %H:%M:%S %z"
 )
 
+
 def parse_time(s):
     return datetime.datetime.strptime(s, "%Y-%m-%d %H:%M:%S %z")
 
 
-EPOCH = parse_time('1975-01-01 00:00:00 Z')
+EPOCH = parse_time("1975-01-01 00:00:00 Z")
 
 
 def time_string(dt):
@@ -44,15 +45,19 @@ def time_string(dt):
 @cache
 def open_influx():
     client = influxdb_client.InfluxDBClient(
-        url=(SITE["influx"]["server"]), token=SITE["influx"]["token"], org=SITE["influx"]["org"]
+        url=(SITE["influx"]["server"]),
+        token=SITE["influx"]["token"],
+        org=SITE["influx"]["org"],
     )
     write_api = client.write_api(write_options=SYNCHRONOUS)
     query_api = client.query_api()
     return (write_api, query_api)
 
+
 @cache
 def open_influx_query():
     return open_influx()[1]
+
 
 def do_query(
     query: str,
@@ -105,7 +110,7 @@ def json_cache(filename, generate, max_age_days=7):
             except:
                 print(f"unable read {filename}; generating")
                 traceback.print_exc()
-    print('generating',filename)
+    print("generating", filename)
     data = generate()
     with open(filename, "w") as fp:
         json.dump(data, fp, indent=2)
@@ -115,7 +120,7 @@ def json_cache(filename, generate, max_age_days=7):
 def generate_mean_time_of_day():
     usage_actual = {}
     time_of_day = {}
-    print('querying vue data')
+    print("querying vue data")
     for res in do_query(
         """|> filter(fn: (r) => r["_measurement"] == "energy_usage")
     |> filter(fn: (r) => r["_field"] == "usage")
@@ -126,16 +131,17 @@ def generate_mean_time_of_day():
     |> aggregateWindow(every: 30m, fn: mean, createEmpty: false)
     """,
         "vue",
-            EPOCH,
-        tnow
-     ):
-        usage = res['_value']/2
-        t = res['_time']
+        EPOCH,
+        tnow,
+    ):
+        usage = res["_value"] / 2
+        t = res["_time"]
         record_usage(t, time_of_day, usage, usage_actual)
-    print('querying powerwall data')
+    print("querying powerwall data")
     prev = None
     prevt = None
-    for res in  do_query("""
+    for res in do_query(
+        """
             |> filter(fn: (r) => r["_measurement"] == "energy")
             |> filter(fn: (r) => r["_field"] == "energy_imported")
             |> filter(fn: (r) => r["meter"] == "load")
@@ -144,14 +150,16 @@ def generate_mean_time_of_day():
             |> duplicate(column: "_stop", as: "_time")
             |> window(every: inf)
              """,
-                "powerwall",
-                 EPOCH, tnow):
+        "powerwall",
+        EPOCH,
+        tnow,
+    ):
 
-        t = res['_time']
-        value = res['_value']
+        t = res["_time"]
+        value = res["_value"]
 
         if prevt:
-            deltat = (t-prevt)
+            deltat = t - prevt
             if deltat.seconds == 1800:
                 usage = value - prev
                 record_usage(t, time_of_day, usage, usage_actual)
@@ -170,7 +178,6 @@ def record_usage(t, time_of_day, usage, usage_actual):
     time_of_day.setdefault(tday, list()).append(usage)
 
 
-
 def plot_usage_scatter():
     plt.figure(figsize=(12, 8))
     plt.scatter(
@@ -179,7 +186,6 @@ def plot_usage_scatter():
         s=[v / 100 for _, v in values],
         c=[v / 100 for _, v in values],
     )
-
 
 
 def get_solar_position_index(t):
@@ -193,11 +199,9 @@ def get_solar_position_index(t):
         SITE["location"]["longitude"],
         t + datetime.timedelta(minutes=15),
     )
-    return ALTITUDE_RESOLUTION * round(altitude / ALTITUDE_RESOLUTION), AZIMUTH_RESOLUTION * round(
-        azimuth / AZIMUTH_RESOLUTION
-    )
-
-
+    return ALTITUDE_RESOLUTION * round(
+        altitude / ALTITUDE_RESOLUTION
+    ), AZIMUTH_RESOLUTION * round(azimuth / AZIMUTH_RESOLUTION)
 
 
 def generate_solar_model():
@@ -207,7 +211,11 @@ def generate_solar_model():
     solar_pos_model = {}
     base = None
     t = tcommission = parse_time(SITE["solar"]["commission_date"])
-    exclusions = [(parse_time(rec['start']), parse_time(rec['end'])) for rec in SITE['solar']['data_exclusions']]
+    exclusions = [
+        (parse_time(rec["start"]), parse_time(rec["end"]))
+        for rec in SITE["solar"]["data_exclusions"]
+    ]
+
     def populate(t, usage):
         pos = get_solar_position_index(t)
         excluded = False
@@ -226,9 +234,9 @@ def generate_solar_model():
 
     prev = None
     prevt = None
-    print('querying powerwall solar data')
-    for res in  do_query(
-            """
+    print("querying powerwall solar data")
+    for res in do_query(
+        """
         |> filter(fn: (r) => r["_measurement"] == "energy")
             |> filter(fn: (r) => r["_field"] == "energy_exported")
             |> filter(fn: (r) => r["meter"] == "solar")
@@ -236,23 +244,23 @@ def generate_solar_model():
                 |> last()
                 |> duplicate(column: "_stop", as: "_time")
                 |> window(every: inf) """,
-            "powerwall",
-            EPOCH,
-            tnow,
+        "powerwall",
+        EPOCH,
+        tnow,
     ):
-        t = res['_time']
-        value = res['_value']
+        t = res["_time"]
+        value = res["_value"]
 
         if prevt:
-            deltat = (t-prevt)
+            deltat = t - prevt
             if deltat.seconds == 1800:
                 usage = value - prev
                 populate(t, usage)
         prevt = t
         prev = value
-    print('querying vue data')
+    print("querying vue data")
     for res in do_query(
-            """
+        """
             |> filter(fn: (r) => r["_field"] == "usage")
             |> filter(fn: (r) => r["account_name"] == "Primary Residence")
             |> filter(fn: (r) => r["detailed"] == "True")
@@ -260,9 +268,12 @@ def generate_solar_model():
             |> filter(fn: (r) => r._value < 0.0)
             |> aggregateWindow(every: 30m, fn: mean, createEmpty: false)
              """,
-            "vue", EPOCH,tnow, verbose=False,
+        "vue",
+        EPOCH,
+        tnow,
+        verbose=False,
     ):
-        populate( res['_time'], -res['_value'] / 2)
+        populate(res["_time"], -res["_value"] / 2)
     solar_model_table = dict()
     for pos, powl in solar_pos_model.items():
         solar_model_table[repr(pos)] = sum(powl) / len(powl)
@@ -278,14 +289,15 @@ def generate_solar_model():
                     (altpos[0] - pos[0]) ** 2 * 10 + (altpos[1] - pos[1]) ** 2
                 )
                 avg = mean(powl)
-                if not(avg < 2000 and altpos[0] > 30 and altpos[1] > 180) and (mindist is None or dist < mindist):
+                if not (avg < 2000 and altpos[0] > 30 and altpos[1] > 180) and (
+                    mindist is None or dist < mindist
+                ):
                     minv = powl
                     mindist = dist
             if minv:
                 assert minv is not None
                 res.append(mean(minv))
-        print('smoothing azimuth', azi ,mean(res) if res else 0)
-
+        print("smoothing azimuth", azi, mean(res) if res else 0)
 
     record = {
         "table": solar_model_table,
@@ -303,8 +315,6 @@ def generate_solar_model():
     return record
 
 
-
-
 txover = datetime.datetime.strptime(
     SITE["powerwall"]["commission_date"], "%Y-%m-%d %H:%M:%S %z"
 )
@@ -313,7 +323,7 @@ t_solar_export_payments_start = datetime.datetime.strptime(
 )
 solar_model_record = json_cache("solar_model.json", generate_solar_model)
 solar_output_w = {
-    datetime.datetime.fromisoformat(t):v
+    datetime.datetime.fromisoformat(t): v
     for (t, v) in solar_model_record["output"].items()
 }
 solar_model = solar_model_record["model"]
@@ -328,8 +338,9 @@ usage_actual = {
 }
 values = [x for x in usage_actual.items()]
 
-if 'usage' in sys.argv:
+if "usage" in sys.argv:
     plot_usage_scatter()
+
 
 def plot_model(m):
     altitude = [x[0][0] for x in m]
@@ -371,27 +382,29 @@ def get_tariffs():
         "tariffs",
         t0,
         t1,
-        verbose=True)
+        verbose=True,
+    )
     for res in gas_res:
         t = res["_time"]
         v = res["_value"]
-        rec.setdefault('gas', dict())
+        rec.setdefault("gas", dict())
 
-        rec['gas'][t.date().strftime('%Y-%m-%d')] = v
+        rec["gas"][t.date().strftime("%Y-%m-%d")] = v
     gas_sc = do_query(
-    f"""
+        f"""
       |> filter(fn: (r) => r["_measurement"] == "standing_charge")
       |> filter(fn: (r) => r["fuel"] == "gas")
       |> filter(fn: (r) => r["product"] == "VAR-22-11-01")""",
-    "tariffs",
-    t0,
-    t1,
-    verbose=True)
+        "tariffs",
+        t0,
+        t1,
+        verbose=True,
+    )
     for res in gas_sc:
         t = res["_time"]
-        v =  res["_value"]
-        rec.setdefault('gas standing', dict())
-        rec['gas standing'][t.date().strftime('%Y-%m-%d')] = v
+        v = res["_value"]
+        rec.setdefault("gas standing", dict())
+        rec["gas standing"][t.date().strftime("%Y-%m-%d")] = v
 
     return rec
 
@@ -403,9 +416,9 @@ for outgoing in [True, False]:
     k = "agile " + ("outgoing" if outgoing else "incoming")
     for t, value in tariffs[k].items():
         agile_incoming_cache[(datetime.datetime.fromisoformat(t), outgoing)] = value
-for t, value in tariffs['gas'].items():
+for t, value in tariffs["gas"].items():
     gas_tariffs_cache[(True, datetime.datetime.fromisoformat(t))] = value
-for t, value in tariffs['gas standing'].items():
+for t, value in tariffs["gas standing"].items():
     gas_tariffs_cache[(False, datetime.datetime.fromisoformat(t))] = value
 
 
@@ -418,7 +431,8 @@ def plot_solar_azimuth_altitude_chart(solar_model_table):
     plt.colorbar()
     return plt
 
-if 'solar' in sys.argv or True:
+
+if "solar" in sys.argv or True:
     plot_solar_azimuth_altitude_chart(solar_model_table).show()
 
 values = [x for x in solar_output_w.items() if x[1] > 20]
@@ -435,7 +449,6 @@ def plot_solar_times():
     plt.xlabel("date")
     plt.ylabel("time of day")
     plt.colorbar()
-
 
 
 def get_daily_gas_use():
@@ -525,15 +538,15 @@ print(f"battery cost per kwh=£{battery_cost_per_wh*1e3}")
 
 def get_agile(t, outgoing=False):
     y = t.year - 2023
-    if y > 0 :
-        markup = SITE['tariffs']['agile']['scale'] ** y
+    if y > 0:
+        markup = SITE["tariffs"]["agile"]["scale"] ** y
         if t.day == 29 and t.month == 2:
             t = t.replace(day=28)
         t = t.replace(year=2023)
 
     v = agile_incoming_cache.get((t, outgoing))
     if v is not None:
-        return v*markup
+        return v * markup
     print("miss", t, outgoing)
 
 
@@ -555,12 +568,8 @@ def simulate_tariff(
     electricity_costs=None,
     color="grey",
     verbose=False,
-    start = datetime.datetime.strptime(
-        "2024-01-01 00:00:00 Z", "%Y-%m-%d %H:%M:%S %z"
-    ),
-    end = datetime.datetime.strptime(
-        "2025-01-01 00:00:00 Z", "%Y-%m-%d %H:%M:%S %z"
-    )
+    start=datetime.datetime.strptime("2024-01-01 00:00:00 Z", "%Y-%m-%d %H:%M:%S %z"),
+    end=datetime.datetime.strptime("2025-01-01 00:00:00 Z", "%Y-%m-%d %H:%M:%S %z"),
 ):
     if electricity_costs is None:
         electricity_costs = [
@@ -585,18 +594,21 @@ def simulate_tariff(
     hh_count = 0
     soc_daily_lows = []
     day_costs = []
-    battery_commision_date = datetime.datetime.strptime(SITE['powerwall']['commission_date'], '%Y-%m-%d %H:%M:%S %z')
+    battery_commision_date = datetime.datetime.strptime(
+        SITE["powerwall"]["commission_date"], "%Y-%m-%d %H:%M:%S %z"
+    )
     t = start
     for day in range((end - start).days):
         tday = t + datetime.timedelta(days=day)
         tmodel = map_to_model_date(tday)
-        #if 'discharge' in name and day > 400: verbose=True
+        # if 'discharge' in name and day > 400: verbose=True
         if verbose:
-            print("day", day, tday, 'equivalent day in modelling period',tmodel)
+            print("day", day, tday, "equivalent day in modelling period", tmodel)
         battery_today = battery and tday >= battery_commision_date
 
-        electricity_costs_today, gas_kwh_cost, gas_sc_cost = work_out_prices_today(actual, electricity_costs,
-                                                                                   tday, verbose)
+        electricity_costs_today, gas_kwh_cost, gas_sc_cost = work_out_prices_today(
+            actual, electricity_costs, tday, verbose
+        )
 
         gas_hot_water_saving_active = gas_hot_water and tday.month >= 3
         kwh = 0
@@ -605,9 +617,11 @@ def simulate_tariff(
         soc_daily = []
         solar_today = 0
         slots = [tday + datetime.timedelta(minutes=x * 30) for x in range(48)]
-        charge_slots, highest_outgoing = work_out_agile_charge_slots(slots, verbose) if agile_charge else [], 0
+        charge_slots, highest_outgoing = (
+            work_out_agile_charge_slots(slots, verbose) if agile_charge else []
+        ), 0
         if verbose and agile_charge:
-            print('agile charge at', charge_slots, 'highest outgoing', highest_outgoing)
+            print("agile charge at", charge_slots, "highest outgoing", highest_outgoing)
         electricity_import_cost = 0
         gas_import_cost = 0
         electricity_export_cost = 0
@@ -615,7 +629,9 @@ def simulate_tariff(
         for hh in range(48):
             hh_count += 1
             time_of_day = tday + datetime.timedelta(minutes=hh * 30)
-            pos, solar_prod_wh_hh, _ = work_out_solar_production(time_of_day, verbose=verbose,solar=solar)
+            pos, solar_prod_wh_hh, _ = work_out_solar_production(
+                time_of_day, verbose=verbose, solar=solar
+            )
             solar_prod_total += solar_prod_wh_hh
             solar_today += solar_prod_wh_hh
             kwh += solar_prod_wh_hh
@@ -629,42 +645,78 @@ def simulate_tariff(
                         f"gas hot water reduced usage at {time_of_day} by  {discount}Wh to ${usage_hh}"
                     )
                 assert usage_hh > 0
-            net_use = usage_hh - solar_prod_wh_hh  # net wh energy requirement for the period
+            net_use = (
+                usage_hh - solar_prod_wh_hh
+            )  # net wh energy requirement for the period
             if verbose:
                 print(f"{time_of_day} net electrical requirement {net_use}Wh")
-            price = work_out_prices_now(electricity_costs_today, name, time_of_day,
-                                        verbose, winter_agile_import, saving_sessions_discharge)
+            price = work_out_prices_now(
+                electricity_costs_today,
+                name,
+                time_of_day,
+                verbose,
+                winter_agile_import,
+                saving_sessions_discharge,
+            )
             if hh == 0:
                 gas_kwh_day = gas_use.get(tmodel.strftime("%Y-%m-%d"), 0) / 1000 + (
                     10 if gas_hot_water_saving_active else 0
                 )
-                gas_cost = ( gas_sc_cost + gas_kwh_day * gas_kwh_cost)
+                gas_cost = gas_sc_cost + gas_kwh_day * gas_kwh_cost
                 gas_import_cost += gas_cost
                 if verbose:
-                    print(f"{time_of_day} gas use {gas_kwh_day}kWh, cost £${gas_cost:.2f}")
+                    print(
+                        f"{time_of_day} gas use {gas_kwh_day}kWh, cost £${gas_cost:.2f}"
+                    )
             else:
                 gas_cost = 0
             if verbose:
-                print(f"{time_of_day} net use net use {net_use}Wh (usage={usage_hh}Wh solar={solar_prod_wh_hh}Wh)")
+                print(
+                    f"{time_of_day} net use net use {net_use}Wh (usage={usage_hh}Wh solar={solar_prod_wh_hh}Wh)"
+                )
             soc_delta, wh_from_grid = (
-                handle_energy_supply(battery_today, net_use, soc, time_of_day, verbose) if net_use > 0
-                else  handle_energy_excess(battery_today, net_use, soc, solar_prod_wh_hh, verbose))
-            soc_delta, wh_from_grid = handle_grid_charge(agile_charge, battery, battery_today, charge_slots,
-                                                         grid_charge, price['import'], soc, soc_delta, time_of_day,verbose, wh_from_grid)
+                handle_energy_supply(battery_today, net_use, soc, time_of_day, verbose)
+                if net_use > 0
+                else handle_energy_excess(
+                    battery_today, net_use, soc, solar_prod_wh_hh, verbose
+                )
+            )
+            soc_delta, wh_from_grid = handle_grid_charge(
+                agile_charge,
+                battery,
+                battery_today,
+                charge_slots,
+                grid_charge,
+                price["import"],
+                soc,
+                soc_delta,
+                time_of_day,
+                verbose,
+                wh_from_grid,
+            )
 
             soc_delta, wh_from_grid = handle_grid_discharge(
-                wh_from_grid, price['export'], grid_discharge,
-                highest_outgoing, saving_sessions_discharge, soc,
-                soc_delta, time_of_day, price["export"] == "agile", verbose=verbose)
+                wh_from_grid,
+                price["export"],
+                grid_discharge,
+                highest_outgoing,
+                saving_sessions_discharge,
+                soc,
+                soc_delta,
+                time_of_day,
+                price["export"] == "agile",
+                verbose=verbose,
+            )
             export_payment_bonus = 0
             battery_wear_cost = battery_cost_per_wh * -min(0, soc_delta)
-            electricty_cost_hh = max(0, wh_from_grid) * price['import'] / 1000
-            export_payment_hh = min(0, wh_from_grid) * price['export'] / 1000
+            electricty_cost_hh = max(0, wh_from_grid) * price["import"] / 1000
+            export_payment_hh = min(0, wh_from_grid) * price["export"] / 1000
             hh_cost = (
                 ((standing + gas_cost) if hh == 0 else 0)
                 + electricty_cost_hh
                 + export_payment_hh
-                + battery_wear_cost)
+                + battery_wear_cost
+            )
             cost += hh_cost
             electricity_import_cost += electricty_cost_hh
             electricity_export_cost += export_payment_hh
@@ -697,8 +749,12 @@ def simulate_tariff(
         cost_series.append(cost)
         day_costs.append(day_cost)
 
-        day_cost_map[tday.date()] = {'electricity_import_cost':electricity_import_cost, 'gas_import_cost':gas_import_cost, "electricity_export_cost":electricity_export_cost,
-                                     "solar_production": solar_today/1000}
+        day_cost_map[tday.date()] = {
+            "electricity_import_cost": electricity_import_cost,
+            "gas_import_cost": gas_import_cost,
+            "electricity_export_cost": electricity_export_cost,
+            "solar_production": solar_today / 1000,
+        }
 
     if actual:
         compare_with_bills(day_cost_map)
@@ -719,7 +775,7 @@ def simulate_tariff(
 
     return {
         "month_cost": month_cost,
-        "day_cost_map":day_cost_map,
+        "day_cost_map": day_cost_map,
         "annual cost": cost_series[-1],
         "name": name,
         "soc_daily_lows": soc_daily_lows,
@@ -730,21 +786,39 @@ def simulate_tariff(
         "months": months,
     }
 
+
 def simulate_tariff_and_store(name, **params):
     results = simulate_tariff(name, **params)
     RUN_ARCHIVE.append(results)
-    plot_days(results)
+    plot_days(results, name)
+
 
 def in_savings_session(time_of_day):
-    return ((time_of_day.month == 12 and time_of_day.year >= 2023) or (
-            time_of_day.month in [1, 2] and time_of_day.year >= 2024)) and (
-                time_of_day.month in [12, 1, 2]
-                and time_of_day.day in [7, 14, 21]
-                and (time_of_day.hour == 17 or (time_of_day.hour == 18 and time_of_day.minute < 30))
+    return (
+        (time_of_day.month == 12 and time_of_day.year >= 2023)
+        or (time_of_day.month in [1, 2] and time_of_day.year >= 2024)
+    ) and (
+        time_of_day.month in [12, 1, 2]
+        and time_of_day.day in [7, 14, 21]
+        and (
+            time_of_day.hour == 17
+            or (time_of_day.hour == 18 and time_of_day.minute < 30)
         )
+    )
 
-def handle_grid_discharge(wh_from_grid, export_payment,  grid_discharge, highest_outgoing,
-                          saving_sessions_discharge, soc, soc_delta, time_of_day, agile, verbose=False):
+
+def handle_grid_discharge(
+    wh_from_grid,
+    export_payment,
+    grid_discharge,
+    highest_outgoing,
+    saving_sessions_discharge,
+    soc,
+    soc_delta,
+    time_of_day,
+    agile,
+    verbose=False,
+):
     if grid_discharge or saving_sessions_discharge:
         go = False
         if saving_sessions_discharge:
@@ -752,7 +826,7 @@ def handle_grid_discharge(wh_from_grid, export_payment,  grid_discharge, highest
         elif grid_discharge and agile:
             go = export_payment >= highest_outgoing[6] / 100
             if go and verbose:
-                print('agile discharge at', time_of_day, 'price', export_payment)
+                print("agile discharge at", time_of_day, "price", export_payment)
 
         elif grid_discharge and not saving_sessions_discharge:
             go = export_payment >= discharge_price_floor
@@ -780,23 +854,38 @@ def handle_grid_discharge(wh_from_grid, export_payment,  grid_discharge, highest
     return soc_delta, wh_from_grid
 
 
-def handle_grid_charge(agile_charge, battery, battery_today, charge_slots, grid_charge, import_cost, soc, soc_delta,
-                       time_of_day, verbose, wh_from_grid):
+def handle_grid_charge(
+    agile_charge,
+    battery,
+    battery_today,
+    charge_slots,
+    grid_charge,
+    import_cost,
+    soc,
+    soc_delta,
+    time_of_day,
+    verbose,
+    wh_from_grid,
+):
     if agile_charge:
         grid_charge_now = time_of_day in [x[1] for x in charge_slots] and (
-                soc > battery_size * 0.5 and import_cost > 0.1
+            soc > battery_size * 0.5 and import_cost > 0.1
         )
     else:
         grid_charge_now = (
-                time_of_day.hour >= 2 and time_of_day.hour < 5 and grid_charge and battery) and time_of_day.month in [1,2,10,11,12]
+            time_of_day.hour >= 2 and time_of_day.hour < 5 and grid_charge and battery
+        ) and time_of_day.month in [1, 2, 10, 11, 12]
     if grid_charge_now and battery_today:
-        wh_from_grid += max(0, (
+        wh_from_grid += max(
+            0,
+            (
                 min(
                     (battery_size - soc) / battery_efficiency,
                     maximum_charge_rate_watts / 2,
                 )
                 - soc_delta
-        ))
+            ),
+        )
         add = wh_from_grid * battery_efficiency
         if verbose:
             print(
@@ -860,18 +949,23 @@ def handle_energy_supply(battery_today, net_use, soc, time_of_day, verbose):
     soc_delta = -wh_from_battery
     if verbose:
         print(
-            f"{time_of_day} taking {wh_from_grid}Wh from grid and {wh_from_battery}Wh from battery (battery today={battery_today})")
+            f"{time_of_day} taking {wh_from_grid}Wh from grid and {wh_from_battery}Wh from battery (battery today={battery_today})"
+        )
     return soc_delta, wh_from_grid
 
 
 def compare_with_bills(day_cost_map):
-    for bill in SITE['bills']:
-        start = datetime.datetime.strptime(bill['start'], '%Y-%m-%d').date()
-        end = datetime.datetime.strptime(bill['end'], '%Y-%m-%d').date()
+    for bill in SITE["bills"]:
+        start = datetime.datetime.strptime(bill["start"], "%Y-%m-%d").date()
+        end = datetime.datetime.strptime(bill["end"], "%Y-%m-%d").date()
         total = 0
         day_cost = {}
-        if 'total' not in bill:
-            bill['total'] = bill['electricity_import_cost'] + bill['gas_import_cost'] + bill['electricity_export_cost']
+        if "total" not in bill:
+            bill["total"] = (
+                bill["electricity_import_cost"]
+                + bill["gas_import_cost"]
+                + bill["electricity_export_cost"]
+            )
         for i in range((end - start).days):
             day = start + datetime.timedelta(days=i)
             print(day, day_cost_map[day])
@@ -879,43 +973,54 @@ def compare_with_bills(day_cost_map):
                 day_cost.setdefault(field, 0)
                 day_cost[field] += x
                 total += day_cost[field]
-        print(f'Bill from {start} to {end}')
+        print(f"Bill from {start} to {end}")
         for field in day_cost:
-            print('\tfor ' + field)
-            print('\t\texpected', bill.get(field), 'actual', day_cost[field])
+            print("\tfor " + field)
+            print("\t\texpected", bill.get(field), "actual", day_cost[field])
 
 
-def work_out_prices_now(electricity_costs_today, name, time_of_day, verbose=False, winter_agile_import=False,
-                        savings_session_discharge=False):
+def work_out_prices_now(
+    electricity_costs_today,
+    name,
+    time_of_day,
+    verbose=False,
+    winter_agile_import=False,
+    savings_session_discharge=False,
+):
     price_matches = [
         price
         for price in electricity_costs_today
         if time_of_day.hour >= price["start"] and time_of_day.hour < price["end"]
     ]
-    assert len(price_matches) == 1, (price_matches, name, time_of_day, electricity_costs_today)
+    assert len(price_matches) == 1, (
+        price_matches,
+        name,
+        time_of_day,
+        electricity_costs_today,
+    )
     price = dict(**price_matches[0])
     if verbose:
         print(f"{time_of_day} price structure {price}")
     winter_override = winter_agile_import and time_of_day.month in [11, 12, 1, 2, 3]
     if price["import"] == "agile" or winter_override:
-        price['import'] = get_agile(time_of_day) / 100
+        price["import"] = get_agile(time_of_day) / 100
     if price["export"] == "agile":
-        price['export'] = (
-                get_agile(
-                    time_of_day,
-                    outgoing=True,
-                )
-                / 100
+        price["export"] = (
+            get_agile(
+                time_of_day,
+                outgoing=True,
+            )
+            / 100
         )
         if verbose:
-            print("export", time_of_day, "is", price['export'])
+            print("export", time_of_day, "is", price["export"])
     # else:
     #     if winter_override:
     #         price['export'] = export_payment
     if time_of_day < t_solar_export_payments_start:
-        price['export'] = 0
+        price["export"] = 0
     if savings_session_discharge and in_savings_session(time_of_day):
-        price['export'] += 4.2
+        price["export"] += 4.2
     return price
 
 
@@ -942,19 +1047,20 @@ def work_out_solar_production(time_of_day, verbose=False, solar=True, use_record
             solar_prod_kwh_hh = solar_output_w[time_of_day]
             from_record = True
         else:
-            solar_prod_kwh_hh = (0 if pos[0] <= 0 else solar_model_table.get(pos, 0)) * SITE['solar'].get('actual_scale_output', 1) / SITE['solar'].get('model_scale_output', 1)
+            solar_prod_kwh_hh = (
+                (0 if pos[0] <= 0 else solar_model_table.get(pos, 0))
+                * SITE["solar"].get("actual_scale_output", 1)
+                / SITE["solar"].get("model_scale_output", 1)
+            )
             from_record = False
     if verbose:
         print(time_of_day, "solar position", pos, "solar production", solar_prod_kwh_hh)
     return pos, solar_prod_kwh_hh, from_record
 
+
 def plot_solar_production(start="2023-01-01 00:00:00 Z", end="2025-01-01 00:00:00 Z"):
-    t = datetime.datetime.strptime(
-        start, "%Y-%m-%d %H:%M:%S %z"
-    )
-    end = datetime.datetime.strptime(end,
-        "%Y-%m-%d %H:%M:%S %z"
-    )
+    t = datetime.datetime.strptime(start, "%Y-%m-%d %H:%M:%S %z")
+    end = datetime.datetime.strptime(end, "%Y-%m-%d %H:%M:%S %z")
     series_real = []
     series_model = []
     series_t = []
@@ -964,26 +1070,30 @@ def plot_solar_production(start="2023-01-01 00:00:00 Z", end="2025-01-01 00:00:0
 
             all_from_records = True
             for hh in range(48):
-                time_of_day = t + datetime.timedelta(minutes=30*hh)
-                pos, wh_hh, from_records = work_out_solar_production(time_of_day, use_records=use_records)
+                time_of_day = t + datetime.timedelta(minutes=30 * hh)
+                pos, wh_hh, from_records = work_out_solar_production(
+                    time_of_day, use_records=use_records
+                )
                 if not from_records:
                     all_from_records = False
                 wh_day += wh_hh
 
             if use_records:
-                series_real.append(wh_day/1000 if all_from_records else 0)
+                series_real.append(wh_day / 1000 if all_from_records else 0)
             else:
-                series_model.append(wh_day/1000)
+                series_model.append(wh_day / 1000)
         series_t.append(t)
         t += datetime.timedelta(days=1)
-    plt.plot(series_t, series_real, label='real readings')
-    plt.plot(series_t, series_model, label='model')
+    plt.plot(series_t, series_real, label="real readings")
+    plt.plot(series_t, series_model, label="model")
     plt.xlabel("date")
     plt.ylabel("daily kWh output")
     plt.legend()
     plt.show()
 
+
 plot_solar_production()
+
 
 def work_out_agile_charge_slots(slots, verbose):
     agile_series = [(get_agile(x), x) for x in slots]
@@ -994,9 +1104,7 @@ def work_out_agile_charge_slots(slots, verbose):
     if len(charge_slots) < 6:
         charge_slots = lowest[:6]
     if verbose:
-        print(
-            "charge slots", [(x[0], x[1].strftime("%H:%M")) for x in charge_slots]
-        )
+        print("charge slots", [(x[0], x[1].strftime("%H:%M")) for x in charge_slots])
     return charge_slots, highest_outgoing
 
 
@@ -1009,62 +1117,73 @@ def map_to_model_date(tday):
 
 
 def work_out_prices_today(actual, electricity_costs, tday, verbose=False):
-    gas_sc_cost = gas_tariffs_cache.get((False, tday.strftime('%Y-%m-%d')))
-    gas_kwh_cost = gas_tariffs_cache.get((True, tday.strftime('%Y-%m-%d')))
+    gas_sc_cost = gas_tariffs_cache.get((False, tday.strftime("%Y-%m-%d")))
+    gas_kwh_cost = gas_tariffs_cache.get((True, tday.strftime("%Y-%m-%d")))
     found = None
     electricity_costs_today = electricity_costs
-    for tariff in SITE['tariff_history']:
-        tstart = datetime.datetime.strptime(tariff['start'], '%Y-%m-%d')
-        tend = datetime.datetime.strptime(tariff['end'], '%Y-%m-%d')
-        gname = 'gas latest'
+    for tariff in SITE["tariff_history"]:
+        tstart = datetime.datetime.strptime(tariff["start"], "%Y-%m-%d")
+        tend = datetime.datetime.strptime(tariff["end"], "%Y-%m-%d")
+        gname = "gas latest"
         if tday.date() >= tstart.date() and tday.date() <= tend.date():
-            tname = tariff.get('electricity_tariff')
-            gname = tariff.get('gas_tariff')
+            tname = tariff.get("electricity_tariff")
+            gname = tariff.get("gas_tariff")
             if actual and tname:
                 electricity_costs_today = []
-                for period in SITE['tariffs'][tname]['kwh_costs']:
-                    electricity_costs_today.append({
-                        "start": period['start'],
-                        "end": period['end'],
-                        "import": period['import'],
-                        "export": period['export']
-                    })
+                for period in SITE["tariffs"][tname]["kwh_costs"]:
+                    electricity_costs_today.append(
+                        {
+                            "start": period["start"],
+                            "end": period["end"],
+                            "import": period["import"],
+                            "export": period["export"],
+                        }
+                    )
                 found = tname
         # reconcile site.json values with database
-        gas_kwh_cost_declared = SITE['tariffs'][gname]['kwh_costs']['import']
-        gas_sc_cost_declared = SITE['tariffs'][gname]['standing']
-        if 'ovo' not in gname:
+        gas_kwh_cost_declared = SITE["tariffs"][gname]["kwh_costs"]["import"]
+        gas_sc_cost_declared = SITE["tariffs"][gname]["standing"]
+        if "ovo" not in gname:
             if gas_kwh_cost is not None and gas_kwh_cost != gas_kwh_cost_declared:
-                print(f'WARNING: declared gas kwh cost={gas_kwh_cost_declared} != database value {gas_kwh_cost} on {tday}' )
+                print(
+                    f"WARNING: declared gas kwh cost={gas_kwh_cost_declared} != database value {gas_kwh_cost} on {tday}"
+                )
             if gas_kwh_cost is None:
                 gas_kwh_cost = gas_kwh_cost_declared
             if gas_sc_cost is not None and gas_sc_cost != gas_sc_cost_declared:
-                print(f'WARNING: declared gas standing charge cost={gas_sc_cost_declared} != database value {gas_sc_cost}' )
+                print(
+                    f"WARNING: declared gas standing charge cost={gas_sc_cost_declared} != database value {gas_sc_cost}"
+                )
             if gas_sc_cost is None:
                 gas_sc_cost = gas_sc_cost_declared
 
-
     if verbose:
-        print(f'{tday}: electricity tariff={electricity_costs_today} gas sc={gas_sc_cost} kwh={gas_kwh_cost}')
+        print(
+            f"{tday}: electricity tariff={electricity_costs_today} gas sc={gas_sc_cost} kwh={gas_kwh_cost}"
+        )
         if found and verbose:
-            print('prevailing electricity tariff', found, 'to', tday)
+            print("prevailing electricity tariff", found, "to", tday)
     return electricity_costs_today, gas_kwh_cost, gas_sc_cost
 
 
-def plot_days(results):
-    m = results['day_cost_map']
+def plot_days(results, name):
+    m = results["day_cost_map"]
     days = sorted(m.keys())
     plt.figure(figsize=(12, 8))
-    for k in ['electricity_import_cost', 'gas_import_cost',
-              'electricity_export_cost',
-              #'solar_production'
-              ]:
-        plt.plot(days,[m[d][k] for d in days], label=k)
+    for k in [
+        "electricity_import_cost",
+        "gas_import_cost",
+        "electricity_export_cost",
+        #'solar_production'
+    ]:
+        plt.plot(days, [m[d][k] for d in days], label=k)
 
-    plt.title(results['name'])
+    plt.title(results["name"])
     plt.legend()
     plt.show()
+    plt.savefig(name + ".png")
     return plt
+
 
 def plot(results_list):
     f, (ax1, ax2, ax3, ax4) = matplotlib.pyplot.subplots(4, 1, sharex=True)
@@ -1089,8 +1208,18 @@ def plot(results_list):
     ax4.legend()
     return f
 
-simulate_tariff_and_store(name='actual', actual=True, verbose=False, grid_charge=True,
-                          start=t0, end=t1, grid_discharge=True, saving_sessions_discharge=True, solar=True)
+
+simulate_tariff_and_store(
+    name="actual",
+    actual=True,
+    verbose=False,
+    grid_charge=True,
+    start=t0,
+    end=t1,
+    grid_discharge=True,
+    saving_sessions_discharge=True,
+    solar=True,
+)
 simulate_tariff_and_store(
     name="discharge flux",
     electricity_costs=SITE["tariffs"]["flux"]["kwh_costs"],
@@ -1119,7 +1248,7 @@ simulate_tariff_and_store(
     solar=True,
     color="blue",
     saving_sessions_discharge=True,
-    verbose=False
+    verbose=False,
 )
 simulate_tariff_and_store(
     name="agile incoming and outgoing",
@@ -1139,13 +1268,16 @@ simulate_tariff_and_store(
     solar=True,
     color="blue",
     saving_sessions_discharge=False,
-    verbose=False
+    verbose=False,
 )
 
 
-
 simulate_tariff_and_store(
-     name="flexible no solar no batteries", gas_hot_water=True, verbose=False, battery=False, solar=False
+    name="flexible no solar no batteries",
+    gas_hot_water=True,
+    verbose=False,
+    battery=False,
+    solar=False,
 )
 
 simulate_tariff_and_store(
@@ -1170,4 +1302,4 @@ simulate_tariff_and_store(
 )
 
 f = plot(RUN_ARCHIVE)
-f.show()
+f.savefig("run.png")
