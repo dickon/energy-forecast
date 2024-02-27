@@ -5,6 +5,7 @@ import os.path
 import math
 import sys
 import pysolar
+import pprint
 from functools import cache
 import traceback
 import influxdb_client
@@ -34,6 +35,21 @@ tnow = datetime.datetime.strptime(
 def parse_time(s):
     return datetime.datetime.strptime(s, "%Y-%m-%d %H:%M:%S %z")
 
+
+overrides = {}
+for bill in SITE["bills"]:
+    bill_start = datetime.datetime.strptime(bill["start"], "%Y-%m-%d").date()
+    bill_end = datetime.datetime.strptime(bill["end"], "%Y-%m-%d").date()
+    num_days = (bill_end - bill_start).days
+    print(bill_start, bill_end, num_days, bill)
+    if bill.get("override_daily"):
+        day = bill_start
+        while day <= bill_end:
+            day += datetime.timedelta(days=1)
+            overrides[(day.month, day.day)] = {
+                "export_kwh": bill["electricity_export_kwh"] / num_days,
+                "import_kwh": bill["electricity_import_kwh"] / num_days,
+            }
 
 EPOCH = parse_time("1975-01-01 00:00:00 Z")
 
@@ -321,6 +337,9 @@ txover = datetime.datetime.strptime(
 t_solar_export_payments_start = datetime.datetime.strptime(
     SITE["solar"]["export_payments_start_date"], "%Y-%m-%d %H:%M:%S %z"
 )
+data = json_cache("kwh_use_time_of_day.json", generate_mean_time_of_day)
+mean_time_of_day = data["mean_time_of_day"]
+
 solar_model_record = json_cache("solar_model.json", generate_solar_model)
 solar_output_w = {
     datetime.datetime.fromisoformat(t): v
@@ -330,8 +349,6 @@ solar_model = solar_model_record["model"]
 solar_model_table = {eval(k): v for k, v in solar_model_record["table"].items()}
 
 
-data = json_cache("kwh_use_time_of_day.json", generate_mean_time_of_day)
-mean_time_of_day = data["mean_time_of_day"]
 usage_actual_text = data["usage_actual"]
 usage_actual = {
     datetime.datetime.fromisoformat(x[0]): x[1] for x in usage_actual_text.items()
@@ -429,6 +446,7 @@ def plot_solar_azimuth_altitude_chart(solar_model_table):
     plt.xlabel("azimuth")
     plt.ylabel("altitude")
     plt.colorbar()
+    plt.savefig("solarmodel.png")
     return plt
 
 
@@ -748,7 +766,12 @@ def simulate_tariff(
         kwh_days.append(kwh)
         cost_series.append(cost)
         day_costs.append(day_cost)
-
+        override_today = overrides.get((tday.month, tday.day))
+        if override_today and actual:
+            electricity_export_cost = override_today["export_kwh"] * price["export"]
+            electricity_import_cost = (
+                override_today["import_kwh"] * price["import"] + standing
+            )
         day_cost_map[tday.date()] = {
             "electricity_import_cost": electricity_import_cost,
             "gas_import_cost": gas_import_cost,
