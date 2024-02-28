@@ -221,6 +221,7 @@ def get_solar_position_index(t):
 
 
 def generate_solar_model():
+
     bucket = "56new"
 
     solar_output_w = {}
@@ -231,8 +232,11 @@ def generate_solar_model():
         (parse_time(rec["start"]), parse_time(rec["end"]))
         for rec in SITE["solar"]["data_exclusions"]
     ]
+    overridden = set()
 
     def populate(t, usage):
+        if t in overridden:
+            return
         pos = get_solar_position_index(t)
         excluded = False
         for ex_start, ex_end in exclusions:
@@ -247,6 +251,30 @@ def generate_solar_model():
                 solar_pos_model.setdefault(pos, list())
                 solar_pos_model[pos].append(usage)
             solar_output_w[t.isoformat()] = usage
+
+    used_kwh_day = sum([x[1] for x in mean_time_of_day]) / 1000
+    print("daily kwh used", used_kwh_day)
+    for day, dayover in overrides.items():
+        generated_kwh_day = dayover["export_kwh"] + used_kwh_day - dayover["import_kwh"]
+        print("day", day, "generation est", generated_kwh_day, "based on", dayover)
+        weightings = []
+        weightings_map = {}
+        for hh in range(48):
+            t = datetime.datetime(
+                year=2023, month=day[0], day=day[1], tzinfo=datetime.timezone.utc
+            ) + datetime.timedelta(minutes=30 * hh)
+            pos = get_solar_position_index(t)
+            if pos[0] > 5:
+                weighting = pos[0] + (30 if hh > 26 and hh < 32 else 0)
+            else:
+                weighting = 0
+            weightings.append(weighting)
+            weightings_map[t] = weighting
+        tot_weight = sum(weightings)
+        for t in weightings_map.keys():
+            est_gen_hh_wh = 1000 * weightings_map[t] * generated_kwh_day / tot_weight
+            populate(t, est_gen_hh_wh)
+            overridden.add(t)
 
     prev = None
     prevt = None
