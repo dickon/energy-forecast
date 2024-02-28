@@ -796,7 +796,7 @@ def simulate_tariff(
         day_costs.append(day_cost)
         override_today = overrides.get((tday.month, tday.day))
         if override_today and actual:
-            electricity_export_cost = override_today["export_kwh"] * price["export"]
+            electricity_export_cost = -override_today["export_kwh"] * price["export"]
             electricity_import_cost = (
                 override_today["import_kwh"] * price["import"] + standing
             )
