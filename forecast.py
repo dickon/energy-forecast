@@ -21,6 +21,10 @@ ALTITUDE_RESOLUTION = 1
 
 SITE = json.load(open(os.path.expanduser("~/src/powerwallextract/site.json")))
 
+def parse_time(text):
+    return datetime.datetime.strptime(
+    tnext, "%Y-%m-%d %H:%M:%S %z"
+) 
 t0 = datetime.datetime.strptime(
     "2023-01-01 00:00:00 Z", "%Y-%m-%d %H:%M:%S %z"
 )  # start of modelling period
@@ -220,8 +224,15 @@ def get_solar_position_index(t):
     ), AZIMUTH_RESOLUTION * round(azimuth / AZIMUTH_RESOLUTION)
 
 
-def generate_solar_model():
+def title(message):
+    print()
+    print()
+    print(message)
+    print('='*len(message))
+    print
 
+def generate_solar_model():
+    title('generating solar model')
     bucket = "56new"
 
     solar_output_w = {}
@@ -232,25 +243,25 @@ def generate_solar_model():
         (parse_time(rec["start"]), parse_time(rec["end"]))
         for rec in SITE["solar"]["data_exclusions"]
     ]
-    overridden = set()
+    overridden = {}
 
     def populate(t, usage):
         if t in overridden:
+            print('overriden', t, 'usage', usage, 'by', overridden[t])
             return
         pos = get_solar_position_index(t)
         excluded = False
-        for ex_start, ex_end in exclusions:
-            if t >= ex_start and t <= ex_end:
-                excluded = True
-        if pos[0] >= 40 and usage < 1500:
-            excluded = True
-        if pos[0] > 50:
-            print(t, pos, usage, excluded)
+        #for ex_start, ex_end in exclusions:
+        #    if t >= ex_start and t <= ex_end:
+        #        excluded = True
+        #        print("excluded")
+        #        if pos[0] >= 40 and usage < 1500:
+        #    excluded = True
         if not excluded:
-            if pos[0] >= 0 and usage > 100:
-                solar_pos_model.setdefault(pos, list())
-                solar_pos_model[pos].append(usage)
-            solar_output_w[t.isoformat()] = usage
+            solar_pos_model.setdefault(pos, list())
+            solar_pos_model[pos].append(max(0, usage))
+            print('populate', repr(t), usage)
+            solar_output_w[t.isoformat()] = max(0, usage)
 
     used_kwh_day = sum([x[1] for x in mean_time_of_day]) / 1000
     print("daily kwh used", used_kwh_day)
@@ -274,54 +285,61 @@ def generate_solar_model():
         for t in weightings_map.keys():
             est_gen_hh_wh = 1000 * weightings_map[t] * generated_kwh_day / tot_weight
             populate(t, est_gen_hh_wh)
-            overridden.add(t)
+            overridden[t] = ('day override', est_gen_hh_wh)
+    if 1:
+        prev = None
+        prevt = None
+        title("querying powerwall solar data")
+        for res in do_query(
+            """
+            |> filter(fn: (r) => r["_measurement"] == "energy")
+                |> filter(fn: (r) => r["_field"] == "energy_exported")
+                |> filter(fn: (r) => r["meter"] == "solar")
+                    |> window(every: 30m)
+                    |> last()
+                    |> duplicate(column: "_stop", as: "_time")
+                    |> window(every: inf) """,
+            "powerwall",
+            EPOCH,
+            tnow,
+        ):
+            t = res["_time"]
+            value = res["_value"]
 
-    prev = None
-    prevt = None
-    print("querying powerwall solar data")
-    for res in do_query(
-        """
-        |> filter(fn: (r) => r["_measurement"] == "energy")
-            |> filter(fn: (r) => r["_field"] == "energy_exported")
-            |> filter(fn: (r) => r["meter"] == "solar")
-                |> window(every: 30m)
-                |> last()
-                |> duplicate(column: "_stop", as: "_time")
-                |> window(every: inf) """,
-        "powerwall",
-        EPOCH,
-        tnow,
-    ):
-        t = res["_time"]
-        value = res["_value"]
-
-        if prevt:
-            deltat = t - prevt
-            if deltat.seconds == 1800:
-                usage = value - prev
-                populate(t, usage)
-        prevt = t
-        prev = value
-    print("querying vue data")
+            if prevt:
+                deltat = t - prevt
+                if deltat.seconds == 1800:
+                    usage = value - prev
+                    print('powerwall solar', t, 'usage', usage)
+                    populate(t, usage)
+                else:
+                    print('powerwall solar', t, 'gap', deltat, 'ignored usage', usage)
+                    
+            prevt = t
+            prev = value
+    title("querying vue data")
     for res in do_query(
         """
             |> filter(fn: (r) => r["_field"] == "usage")
             |> filter(fn: (r) => r["account_name"] == "Primary Residence")
             |> filter(fn: (r) => r["detailed"] == "True")
             |> filter(fn: (r) => r["device_name"] == "SolarEdge Inverter")
-            |> filter(fn: (r) => r._value < 0.0)
             |> aggregateWindow(every: 30m, fn: mean, createEmpty: false)
              """,
         "vue",
         EPOCH,
-        tnow,
+        parse_time(SITE['powerwall']['commission_date']),
         verbose=False,
     ):
+        print('vue solar', res['_time'], res['_value'])
         populate(res["_time"], -res["_value"] / 2)
     solar_model_table = dict()
     for pos, powl in solar_pos_model.items():
         solar_model_table[repr(pos)] = sum(powl) / len(powl)
 
+    title('solar_output_w')
+    pprint.pprint(solar_output_w)
+    title('filling model')
     for azi in range(0, 360, AZIMUTH_RESOLUTION):
         res = []
         for alt in range(0, 70, ALTITUDE_RESOLUTION):
@@ -368,7 +386,9 @@ t_solar_export_payments_start = datetime.datetime.strptime(
 data = json_cache("kwh_use_time_of_day.json", generate_mean_time_of_day)
 mean_time_of_day = data["mean_time_of_day"]
 
-solar_model_record = json_cache("solar_model.json", generate_solar_model)
+solar_model_record = json_cache(
+    "solar_model.json", generate_solar_model, max_age_days=0
+)
 solar_output_w = {
     datetime.datetime.fromisoformat(t): v
     for (t, v) in solar_model_record["output"].items()
@@ -391,7 +411,11 @@ def plot_model(m):
     altitude = [x[0][0] for x in m]
     azimuth = [x[0][1] for x in m]
     pow = [x[1] * 2 for x in m]
-    return plt.scatter(azimuth, altitude, [x / 60 for x in pow], pow)
+    p = plt.scatter(azimuth, altitude, [x / 60 for x in pow], pow)
+    plt.ylim([10, 60])
+    plt.xlim((50, 300))
+    plt.savefig("solarmodel2.png")
+    return p
 
 
 def get_tariffs():
@@ -478,8 +502,7 @@ def plot_solar_azimuth_altitude_chart(solar_model_table):
     return plt
 
 
-if "solar" in sys.argv or True:
-    plot_solar_azimuth_altitude_chart(solar_model_table).show()
+# plot_solar_azimuth_altitude_chart(solar_model_table).show()
 
 values = [x for x in solar_output_w.items() if x[1] > 20]
 
@@ -552,10 +575,9 @@ def get_daily_gas_use():
             extra='import "math"',
         )
 
-        if row["_value"] > 0:
-            age_series.append((tnow - row["_time"]).days)
-            t_series.append(row["_value"])
-            wh_series.append(row["_value"])
+        age_series.append((tnow - row["_time"]).days)
+        t_series.append(max(0, row["_value"]))
+        wh_series.append(max(0, row["_value"]))
         out[row["_time"].strftime("%Y-%m-%d")] = row["_value"]
 
     plt.figure(figsize=(12, 8))
@@ -1088,7 +1110,7 @@ def work_out_electricity_usage(time_of_day, verbose):
     return usage_hh, usage_real
 
 
-def work_out_solar_production(time_of_day, verbose=False, solar=True, use_records=True):
+def work_out_solar_production(time_of_day, verbose=True, solar=True, use_records=True):
     pos = get_solar_position_index(time_of_day)
     if not solar:
         solar_prod_kwh_hh = 0
@@ -1105,13 +1127,14 @@ def work_out_solar_production(time_of_day, verbose=False, solar=True, use_record
             )
             from_record = False
     if verbose:
-        print(time_of_day, "solar position", pos, "solar production", solar_prod_kwh_hh)
+        print(time_of_day, "solar position", pos, "solar production", solar_prod_kwh_hh, 'from record', from_record, 'use_records', use_records)
     return pos, solar_prod_kwh_hh, from_record
 
 
-def plot_solar_production(start="2023-01-01 00:00:00 Z", end="2025-01-01 00:00:00 Z"):
+def plot_solar_production(start="2023-01-06 00:00:00 Z", end=None):
+    title('working out solar production and model')
     t = datetime.datetime.strptime(start, "%Y-%m-%d %H:%M:%S %z")
-    end = datetime.datetime.strptime(end, "%Y-%m-%d %H:%M:%S %z")
+    end = datetime.datetime.strptime(end, "%Y-%m-%d %H:%M:%S %z") if end else tnow
     series_real = []
     series_model = []
     series_t = []
@@ -1119,31 +1142,42 @@ def plot_solar_production(start="2023-01-01 00:00:00 Z", end="2025-01-01 00:00:0
         for use_records in [False, True]:
             wh_day = 0
 
-            all_from_records = True
+            records  = 0
             for hh in range(48):
                 time_of_day = t + datetime.timedelta(minutes=30 * hh)
                 pos, wh_hh, from_records = work_out_solar_production(
-                    time_of_day, use_records=use_records
+                    time_of_day, use_records=use_records, verbose=use_records
                 )
-                if not from_records:
-                    all_from_records = False
+                if use_records:
+                    if use_records and not from_records and pos[0] > 0:
+                        print("solar records gap, synth", time_of_day, pos, wh_hh)
+                    else:
+                        print('solar records at', time_of_day, pos, wh_hh)
+                        records += 1
                 wh_day += wh_hh
 
             if use_records:
-                series_real.append(wh_day / 1000 if all_from_records else 0)
+                print(t, 'wh day', wh_day, 'records', records)
+                series_real.append(wh_day / 1000)# if records > 28 else 0)
             else:
                 series_model.append(wh_day / 1000)
         series_t.append(t)
         t += datetime.timedelta(days=1)
+    title('real solar output:')
+    for t, kwh in zip(series_t, series_real):
+        print(t, kwh, '*'*int(kwh))
+    
     plt.plot(series_t, series_real, label="real readings")
     plt.plot(series_t, series_model, label="model")
     plt.xlabel("date")
     plt.ylabel("daily kWh output")
     plt.legend()
     plt.show()
+    plt.savefig("dailysolar2.png")
 
 
 plot_solar_production()
+assert 0
 
 
 def work_out_agile_charge_slots(slots, verbose):
