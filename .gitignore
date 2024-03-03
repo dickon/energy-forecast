@@ -13,3 +13,6 @@ __pycache__/energy_forecast_site.cpython-310.pyc
 __pycache__/influx_wrapper.cpython-310.pyc
 __pycache__/solar.cpython-310.pyc
 __pycache__/time_utils.cpython-310.pyc
+forcecast.log
+dailysolar2.png
+solarmodel2.png
