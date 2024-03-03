@@ -247,7 +247,7 @@ def generate_solar_model():
     ]
     overridden = {}
 
-    def populate(t, usage):
+    def populate(t, usage, actual=True):
         if t in overridden:
             print('overriden', t, 'usage', usage, 'by', overridden[t])
             return
@@ -262,10 +262,13 @@ def generate_solar_model():
         if not excluded:
             solar_pos_model.setdefault(pos, list())
             solar_pos_model[pos].append(max(0, usage))
-            print('populate', repr(t), usage)
-            solar_output_w[t.isoformat()] = max(0, usage)
+            print('populate', repr(t), usage, 'actual=',actual)
+            if actual:
+                solar_output_w[t.isoformat()] = max(0, usage)
 
     used_kwh_day = sum([x[1] for x in mean_time_of_day]) / 1000
+    
+    title('doing estimations from bills')
     print("daily kwh used", used_kwh_day)
     for day, dayover in overrides.items():
         generated_kwh_day = dayover["export_kwh"] + used_kwh_day - dayover["import_kwh"]
@@ -286,7 +289,7 @@ def generate_solar_model():
         tot_weight = sum(weightings)
         for t in weightings_map.keys():
             est_gen_hh_wh = 1000 * weightings_map[t] * generated_kwh_day / tot_weight
-            populate(t, est_gen_hh_wh)
+            populate(t, est_gen_hh_wh, actual=False)
             overridden[t] = ('day override', est_gen_hh_wh)
     if 1:
         prev = None
@@ -389,7 +392,7 @@ data = json_cache("kwh_use_time_of_day.json", generate_mean_time_of_day)
 mean_time_of_day = data["mean_time_of_day"]
 
 solar_model_record = json_cache(
-    "solar_model.json", generate_solar_model, max_age_days=0
+    "solar_model.json", generate_solar_model, max_age_days=14
 )
 solar_output_w = {
     datetime.datetime.fromisoformat(t): v
@@ -1140,6 +1143,7 @@ def plot_solar_production(start="2023-01-06 00:00:00 Z", end=None):
     series_real = []
     series_model = []
     series_t = []
+    series_t_real = []
     while t < end:
         for use_records in [False, True]:
             wh_day = 0
@@ -1160,16 +1164,21 @@ def plot_solar_production(start="2023-01-06 00:00:00 Z", end=None):
 
             if use_records:
                 print(t, 'wh day', wh_day, 'records', records)
-                series_real.append(wh_day / 1000)# if records > 28 else 0)
+                if records > 28:
+                    series_t_real.append(t)
+                    series_real.append(wh_day / 1000)
             else:
                 series_model.append(wh_day / 1000)
         series_t.append(t)
         t += datetime.timedelta(days=1)
     title('real solar output:')
+    tot_solar = 0
     for t, kwh in zip(series_t, series_real):
         print(t, kwh, '*'*int(kwh))
-    
-    plt.plot(series_t, series_real, label="real readings")
+        tot_solar += kwh
+    title('total solar generation')
+    print('total solar generator', tot_solar)
+    plt.scatter(series_t_real, series_real, label="real readings", marker='+', c='black')
     plt.plot(series_t, series_model, label="model")
     plt.xlabel("date")
     plt.ylabel("daily kWh output")
@@ -1179,7 +1188,6 @@ def plot_solar_production(start="2023-01-06 00:00:00 Z", end=None):
 
 
 plot_solar_production()
-assert 0
 
 
 def work_out_agile_charge_slots(slots, verbose):
