@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 from influxdb_client.client.write_api import SYNCHRONOUS
 from statistics import mean, median
 import matplotlib.pyplot as plt
+import pandas as pd
 plt.rcParams["figure.figsize"] = (20,12)
 
 RUN_ARCHIVE = []
@@ -644,6 +645,7 @@ def simulate_tariff(
     start=datetime.datetime.strptime("2024-01-01 00:00:00 Z", "%Y-%m-%d %H:%M:%S %z"),
     end=datetime.datetime.strptime("2025-01-01 00:00:00 Z", "%Y-%m-%d %H:%M:%S %z"),
 ):
+    title('modelling '+name)
     if electricity_costs is None:
         electricity_costs = [
             {
@@ -837,12 +839,12 @@ def simulate_tariff(
     if actual:
         compare_with_bills(day_cost_map)
     prev = 0
-    month_cost = [0] * 12
-    months = []
-    for cost, day in zip(day_costs, days):
-        if day.day == 14:
-            months.append(day)
-        month_cost[day.month - 1] += cost
+    # month_cost = [[0] * 12]
+    # months = []
+    # for cost, day in zip(day_costs, days):
+    #     if day.day == 14:
+    #         months.append(day)
+    #     month_cost[day.month - 1 + 12*(day.year - 2023)] += cost
     # month_cost = month_cost[: len(months)]
     # assert len(months) == len(month_cost), (
     #     len(months),
@@ -852,8 +854,8 @@ def simulate_tariff(
     # )
 
     return {
-        "month_cost": month_cost,
         "day_cost_map": day_cost_map,
+        "day_costs" :  pd.DataFrame(day_costs, index=days), 
         "annual cost": cost_series[-1],
         "name": name,
         "soc_daily_lows": soc_daily_lows,
@@ -861,7 +863,6 @@ def simulate_tariff(
         "kwh_days": kwh_days,
         "cost_series": cost_series,
         "days": days,
-        "months": months,
     }
 
 
@@ -1136,7 +1137,7 @@ def work_out_solar_production(time_of_day, verbose=True, solar=True, use_records
     return pos, solar_prod_kwh_hh, from_record
 
 
-def plot_solar_production(start="2023-01-06 00:00:00 Z", end=None):
+def plot_solar_production(start="2023-01-06 00:00:00 Z", end=None, verbose=False):
     title('working out solar production and model')
     t = datetime.datetime.strptime(start, "%Y-%m-%d %H:%M:%S %z")
     end = datetime.datetime.strptime(end, "%Y-%m-%d %H:%M:%S %z") if end else tnow
@@ -1171,10 +1172,12 @@ def plot_solar_production(start="2023-01-06 00:00:00 Z", end=None):
                 series_model.append(wh_day / 1000)
         series_t.append(t)
         t += datetime.timedelta(days=1)
-    title('real solar output:')
+    if verbose:
+        title('real solar output:')
     tot_solar = 0
     for t, kwh in zip(series_t, series_real):
-        print(t, kwh, '*'*int(kwh))
+        if verbose:
+            print(t, kwh, '*'*int(kwh))
         tot_solar += kwh
     title('total solar generation')
     print('total solar generator', tot_solar)
@@ -1264,7 +1267,7 @@ def work_out_prices_today(actual, electricity_costs, tday, verbose=False):
 def plot_days(results, name):
     m = results["day_cost_map"]
     days = sorted(m.keys())
-    plt.figure(figsize=(12, 8))
+    #plt.figure(figsize=(12, 8))
     for k in [
         "electricity_import_cost",
         "gas_import_cost",
@@ -1286,7 +1289,7 @@ def plot(results_list):
     f.set_figheight(18)
 
     for r in results_list:
-        ax1.plot(r["days"], r["cost_series"], color=r["color"], label=r["name"])
+        r['day_costs'].plot(ax=ax1,color=r['color'],label=r['name'])
         ax1.set_ylabel("cumulative cost, £")
         ax2.plot(r["days"], r["soc_daily_lows"], color=r["color"], label=r["name"])
         ax2.set_ylabel("battery daily low %")
@@ -1294,7 +1297,9 @@ def plot(results_list):
         if [x for x in r["kwh_days"] if x > 0]:
             ax3.plot(r["days"], r["kwh_days"])
         ax3.set_ylabel("solar production, Wh")
-        ax4.plot(r["months"], r["month_cost"], color=r["color"], label=r["name"])
+        month_series=r['day_costs'].groupby([lambda x: datetime.datetime(year=x.year, month=x.month,day=14, hour=12,minute=0,second=0)]).sum()
+        print(month_series)
+        month_series.plot(ax=ax4, color=r["color"], label=r["name"])
         ax4.set_ylabel("monthly cost, £")
         print("plan", r["name"], r["cost_series"][-1])
 
@@ -1310,91 +1315,92 @@ simulate_tariff_and_store(
     verbose=False,
     grid_charge=True,
     start=t0,
-    end=t1,
+    end=tnow,
     grid_discharge=True,
     saving_sessions_discharge=True,
     solar=True,
 )
-simulate_tariff_and_store(
-    name="discharge flux",
-    electricity_costs=SITE["tariffs"]["flux"]["kwh_costs"],
-    grid_charge=True,
-    grid_discharge=True,
-    battery=True,
-    solar=True,
-    color="yellow",
-    verbose=True,
-    saving_sessions_discharge=False,
-)
-simulate_tariff_and_store(
-    name="agile incoming and fixed outgoing",
-    electricity_costs=[
-        {
-            "start": 0,
-            "end": 24,
-            "import": "agile",
-            "export": 0.15,
-        },
-    ],
-    grid_charge=True,
-    grid_discharge=True,
-    agile_charge=True,
-    battery=True,
-    solar=True,
-    color="blue",
-    saving_sessions_discharge=True,
-    verbose=False,
-)
-simulate_tariff_and_store(
-    name="agile incoming and outgoing",
-    electricity_costs=[
-        {
-            "start": 0,
-            "end": 24,
-            "import": "agile",
-            "export": "agile",
-        },
-    ],
-    winter_agile_import=True,
-    grid_charge=True,
-    grid_discharge=True,
-    agile_charge=True,
-    battery=True,
-    solar=True,
-    color="blue",
-    saving_sessions_discharge=False,
-    verbose=False,
-)
+if 1:
+    simulate_tariff_and_store(
+        name="discharge flux",
+        electricity_costs=SITE["tariffs"]["flux"]["kwh_costs"],
+        grid_charge=True,
+        grid_discharge=True,
+        battery=True,
+        solar=True,
+        color="yellow",
+        verbose=True,
+        saving_sessions_discharge=False,
+    )
+    simulate_tariff_and_store(
+        name="agile incoming and fixed outgoing",
+        electricity_costs=[
+            {
+                "start": 0,
+                "end": 24,
+                "import": "agile",
+                "export": 0.15,
+            },
+        ],
+        grid_charge=True,
+        grid_discharge=True,
+        agile_charge=True,
+        battery=True,
+        solar=True,
+        color="blue",
+        saving_sessions_discharge=True,
+        verbose=False,
+    )
+    simulate_tariff_and_store(
+        name="agile incoming and outgoing",
+        electricity_costs=[
+            {
+                "start": 0,
+                "end": 24,
+                "import": "agile",
+                "export": "agile",
+            },
+        ],
+        winter_agile_import=True,
+        grid_charge=True,
+        grid_discharge=True,
+        agile_charge=True,
+        battery=True,
+        solar=True,
+        color="blue",
+        saving_sessions_discharge=False,
+        verbose=False,
+    )
 
 
-simulate_tariff_and_store(
-    name="flexible no solar no batteries",
-    gas_hot_water=True,
-    verbose=False,
-    battery=False,
-    solar=False,
-)
+    simulate_tariff_and_store(
+        name="flexible no solar no batteries",
+        gas_hot_water=True,
+        verbose=False,
+        battery=False,
+        solar=False,
+    )
 
-simulate_tariff_and_store(
-    name="flux",
-    electricity_costs=SITE["tariffs"]["flux"]["kwh_costs"],
-    grid_charge=True,
-    battery=True,
-    solar=True,
-    color="green",
-    saving_sessions_discharge=True,
-)
-simulate_tariff_and_store(
-    name="winter agile",
-    electricity_costs=SITE["tariffs"]["flux"]["kwh_costs"],
-    winter_agile_import=True,
-    grid_charge=True,
-    agile_charge=True,
-    battery=True,
-    solar=True,
-    color="pink",
-    saving_sessions_discharge=True,
-)
+    simulate_tariff_and_store(
+        name="flux",
+        electricity_costs=SITE["tariffs"]["flux"]["kwh_costs"],
+        grid_charge=True,
+        battery=True,
+        solar=True,
+        color="green",
+        saving_sessions_discharge=True,
+    )
+    simulate_tariff_and_store(
+        name="winter agile",
+        electricity_costs=SITE["tariffs"]["flux"]["kwh_costs"],
+        winter_agile_import=True,
+        grid_charge=True,
+        agile_charge=True,
+        battery=True,
+        solar=True,
+        color="pink",
+        saving_sessions_discharge=True,
+    )
 
 f = plot(RUN_ARCHIVE)
 f.savefig("run.png")
