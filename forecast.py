@@ -12,6 +12,8 @@ import influxdb_client
 import matplotlib.pyplot as plt
 from influxdb_client.client.write_api import SYNCHRONOUS
 from statistics import mean, median
+import matplotlib.pyplot as plt
+plt.rcParams["figure.figsize"] = (20,12)
 
 RUN_ARCHIVE = []
 TIME_STRING_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
