@@ -5,6 +5,7 @@ import os.path
 import math
 import sys
 import pysolar
+import pickle
 import pprint
 from functools import cache
 import traceback
@@ -12,6 +13,7 @@ import influxdb_client
 import matplotlib.pyplot as plt
 from influxdb_client.client.write_api import SYNCHRONOUS
 from statistics import mean, median
+import seaborn
 import matplotlib.pyplot as plt
 import pandas as pd
 plt.rcParams["figure.figsize"] = (20,12)
@@ -36,7 +38,7 @@ t1 = datetime.datetime.strptime(
 )  # end of modelling period
 tnow = datetime.datetime.strptime(
     datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S Z"), "%Y-%m-%d %H:%M:%S %z"
-)
+).replace(minute=0, second=0, microsecond=0)
 
 
 def parse_time(s):
@@ -120,7 +122,7 @@ def do_query(
     return resl[0]
 
 
-def json_cache(filename, generate, max_age_days=7):
+def memoize(filename, generate, max_age_days=7):
     if os.path.exists(filename):
         mtime = os.stat(filename).st_mtime
         mtime_date = datetime.datetime.fromtimestamp(mtime)
@@ -128,15 +130,15 @@ def json_cache(filename, generate, max_age_days=7):
         print("cache file", filename, "age", age)
         if age.days < max_age_days:
             try:
-                with open(filename, "r") as fp:
-                    return json.load(fp)
+                with open(filename, "rb") as fp:
+                    return pickle.load(fp)
             except:
                 print(f"unable read {filename}; generating")
                 traceback.print_exc()
     print("generating", filename)
     data = generate()
-    with open(filename, "w") as fp:
-        json.dump(data, fp, indent=2)
+    with open(filename, "wb") as fp:
+        pickle.dump(data, fp)
     return data
 
 
@@ -234,12 +236,44 @@ def title(message):
     print('='*len(message))
     print
 
-def generate_solar_model():
+def generate_solar_model(verbose=True):
     title('generating solar model')
     bucket = "56new"
 
+    title("looking for clear skies")
+    clear_skies = set()
+    cloud_series = []
+    cloud_t = []
+    for entry in do_query(
+            """
+    |> filter(fn: (r) => r["entity_id"] == "openweathermap_cloud_coverage")
+    |> filter(fn: (r) => r["_field"] == "value")
+    |> filter(fn: (r) => r["_measurement"] == "%")
+    |> aggregateWindow(every: 30m, fn: mean, createEmpty: false)
+     """,
+            "home-assistant",
+            EPOCH,
+            tnow,
+        ):
+        pos = get_solar_position_index(entry['_time'])
+        if verbose:
+            print('cloud',entry, 'sun pos', pos)
+        if pos[0] > 0:
+            cloud_series.append(entry['_value'])
+            cloud_t.append(entry['_time'])
+            if entry['_value'] <= 20:
+                clear_skies.add(entry['_time'])
+    clouds = pd.DataFrame(cloud_series, index=cloud_t)
+    title('clear skies')
+    print(clouds)
+    ax = clouds.plot()
+    ax.get_figure().savefig('clouds.png')
+    ax2 = seaborn.displot(clouds, kind='ecdf')
+    ax2.figure.savefig('clouds_dist.png')
+    pprint.pprint(clear_skies)
     solar_output_w = {}
     solar_pos_model = {}
+    solar_pos_table = {}
     base = None
     t = tcommission = parse_time(SITE["solar"]["commission_date"])
     exclusions = [
@@ -253,19 +287,12 @@ def generate_solar_model():
             print('overriden', t, 'usage', usage, 'by', overridden[t])
             return
         pos = get_solar_position_index(t)
-        excluded = False
-        #for ex_start, ex_end in exclusions:
-        #    if t >= ex_start and t <= ex_end:
-        #        excluded = True
-        #        print("excluded")
-        #        if pos[0] >= 40 and usage < 1500:
-        #    excluded = True
-        if not excluded:
-            solar_pos_model.setdefault(pos, list())
-            solar_pos_model[pos].append(max(0, usage))
+        if t in clear_skies:
+            solar_pos_table.setdefault(pos, list())
+            solar_pos_table[pos].append(max(0, usage))
             print('populate', repr(t), usage, 'actual=',actual)
-            if actual:
-                solar_output_w[t.isoformat()] = max(0, usage)
+        if actual:
+            solar_output_w[t.isoformat()] = max(0, usage)
 
     used_kwh_day = sum([x[1] for x in mean_time_of_day]) / 1000
     
@@ -339,46 +366,43 @@ def generate_solar_model():
     ):
         print('vue solar', res['_time'], res['_value'])
         populate(res["_time"], -res["_value"] / 2)
-    solar_model_table = dict()
-    for pos, powl in solar_pos_model.items():
-        solar_model_table[repr(pos)] = sum(powl) / len(powl)
 
     title('solar_output_w')
     pprint.pprint(solar_output_w)
     title('filling model')
+    
+    solar_pos_model = { k:max(v) for k,v in solar_pos_table.items()}
+    originals =solar_pos_model.keys()
     for azi in range(0, 360, AZIMUTH_RESOLUTION):
-        res = []
+        print("smoothing azimuth", azi)
         for alt in range(0, 70, ALTITUDE_RESOLUTION):
+            res = []
             pos = (alt, azi)
+            if pos in originals:
+                continue
+            print('filling',pos)
             mindist = None
             minv = None
-            for altpos, powl in solar_pos_model.items():
+            minpos = None
+            for altpos, altvs in solar_pos_table.items():
+                altv = max(altvs)
                 dist = math.sqrt(
-                    (altpos[0] - pos[0]) ** 2 * 10 + (altpos[1] - pos[1]) ** 2
+                    (altpos[0] - pos[0]) ** 2  + (altpos[1] - pos[1]) ** 2
                 )
-                avg = mean(powl)
-                if not (avg < 2000 and altpos[0] > 30 and altpos[1] > 180) and (
-                    mindist is None or dist < mindist
-                ):
-                    minv = powl
+                if (mindist is None or dist < mindist):
+                    if verbose:
+                        print('pos',pos,'from',altpos,'dist',dist)
+                    minv = altv
                     mindist = dist
+                    minpos = altpos
+            if verbose:
+                print('pos', pos, 'mindist',mindist,'minv',minv,'from',minpos)
             if minv:
-                assert minv is not None
-                res.append(mean(minv))
-        print("smoothing azimuth", azi, mean(res) if res else 0)
-
+                solar_pos_model[pos] = minv
     record = {
-        "table": solar_model_table,
-        "output": solar_output_w,
-        "model": [
-            (
-                repr(pos),
-                median(solar_pos_model[pos]),
-                len(solar_pos_model[pos]),
-            )
-            for pos in sorted(solar_pos_model.keys())
-            if pos[0] >= 0
-        ],
+        "solar_pos_model": solar_pos_model,
+        "solar_output_w": solar_output_w,
+        "clouds": pd.Series(cloud_series, index=cloud_t)
     }
     return record
 
@@ -389,19 +413,15 @@ txover = datetime.datetime.strptime(
 t_solar_export_payments_start = datetime.datetime.strptime(
     SITE["solar"]["export_payments_start_date"], "%Y-%m-%d %H:%M:%S %z"
 )
-data = json_cache("kwh_use_time_of_day.json", generate_mean_time_of_day)
+data = memoize("kwh_use_time_of_day.pickle", generate_mean_time_of_day)
 mean_time_of_day = data["mean_time_of_day"]
 
-solar_model_record = json_cache(
-    "solar_model.json", generate_solar_model, max_age_days=14
+solar_model_record = memoize(
+    "solar_model.pickle", generate_solar_model, max_age_days=14
 )
-solar_output_w = {
-    datetime.datetime.fromisoformat(t): v
-    for (t, v) in solar_model_record["output"].items()
-}
-solar_model = solar_model_record["model"]
-solar_model_table = {eval(k): v for k, v in solar_model_record["table"].items()}
-
+solar_output_w = solar_model_record ['solar_output_w']
+solar_pos_model = solar_model_record["solar_pos_model"]
+solar_model_table = solar_pos_model.items()
 
 usage_actual_text = data["usage_actual"]
 usage_actual = {
@@ -411,17 +431,6 @@ values = [x for x in usage_actual.items()]
 
 if "usage" in sys.argv:
     plot_usage_scatter()
-
-
-def plot_model(m):
-    altitude = [x[0][0] for x in m]
-    azimuth = [x[0][1] for x in m]
-    pow = [x[1] * 2 for x in m]
-    p = plt.scatter(azimuth, altitude, [x / 60 for x in pow], pow)
-    plt.ylim([10, 60])
-    plt.xlim((50, 300))
-    plt.savefig("solarmodel2.png")
-    return p
 
 
 def get_tariffs():
@@ -484,7 +493,7 @@ def get_tariffs():
     return rec
 
 
-tariffs = json_cache("tariffs.json", get_tariffs)
+tariffs = memoize("tariffs.pickle", get_tariffs)
 agile_incoming_cache = {}
 gas_tariffs_cache = {}
 for outgoing in [True, False]:
@@ -497,9 +506,21 @@ for t, value in tariffs["gas standing"].items():
     gas_tariffs_cache[(False, datetime.datetime.fromisoformat(t))] = value
 
 
+def plot_model(m, verbose=False):
+    if verbose:
+        title('solar model')
+        pprint.pprint(m)
+    altitude = [x[0][0] for x in m]
+    azimuth = [x[0][1] for x in m]
+    pow = [x[1] for x in m]
+    p = plt.scatter(azimuth, altitude, [x / 60 for x in pow], pow)
+    plt.ylim([0, 70])
+    plt.xlim((50, 300))
+    return p
+
 def plot_solar_azimuth_altitude_chart(solar_model_table):
     plt.figure(figsize=(12, 8))
-    p = plot_model([(pos, v) for pos, v in solar_model_table.items()])
+    p = plot_model(solar_model_table)
     plt.title("solar AC output power over 30 minutes")
     plt.xlabel("azimuth")
     plt.ylabel("altitude")
@@ -508,7 +529,7 @@ def plot_solar_azimuth_altitude_chart(solar_model_table):
     return plt
 
 
-# plot_solar_azimuth_altitude_chart(solar_model_table).show()
+plot_solar_azimuth_altitude_chart(solar_model_table).show()
 
 values = [x for x in solar_output_w.items() if x[1] > 20]
 
@@ -524,7 +545,7 @@ def plot_solar_times():
     plt.xlabel("date")
     plt.ylabel("time of day")
     plt.colorbar()
-
+    plt.savefig('solartimes.png')
 
 def get_daily_gas_use():
     tback = t0
@@ -593,7 +614,7 @@ def get_daily_gas_use():
     return out
 
 
-gas_use = json_cache("gas.json", get_daily_gas_use)
+gas_use = memoize("gas.pickle", get_daily_gas_use)
 
 
 actual_scale = 8860 / 7632
@@ -642,8 +663,8 @@ def simulate_tariff(
     electricity_costs=None,
     color="grey",
     verbose=False,
-    start=datetime.datetime.strptime("2024-01-01 00:00:00 Z", "%Y-%m-%d %H:%M:%S %z"),
-    end=datetime.datetime.strptime("2025-01-01 00:00:00 Z", "%Y-%m-%d %H:%M:%S %z"),
+    start=tnow,
+    end=tnow + datetime.timedelta(days=365)
 ):
     title('modelling '+name)
     if electricity_costs is None:
@@ -855,13 +876,13 @@ def simulate_tariff(
 
     return {
         "day_cost_map": day_cost_map,
-        "day_costs" :  pd.DataFrame(day_costs, index=days), 
+        "day_costs" :  pd.DataFrame({name:day_costs}, index=days), 
         "annual cost": cost_series[-1],
         "name": name,
-        "soc_daily_lows": soc_daily_lows,
+        "soc_daily_lows": pd.DataFrame({name:soc_daily_lows}, index=days),
         "color": color,
-        "kwh_days": kwh_days,
-        "cost_series": cost_series,
+        "kwh_days": pd.DataFrame({name:kwh_days}, index=days),
+        "cost_series": pd.DataFrame({name:cost_series}, index=days),
         "days": days,
     }
 
@@ -1006,6 +1027,7 @@ def handle_energy_excess(battery_today, net_use, soc, solar_prod_wh_hh, verbose)
         export_kwh = (-net_use - charge_delta) / 1000
     else:
         export_kwh = 0
+        soc_delta_charge = 0
     export_kwh = max(export_kwh, 0)
     assert export_kwh >= 0
     wh_from_grid = -export_kwh * 1000
@@ -1127,7 +1149,7 @@ def work_out_solar_production(time_of_day, verbose=True, solar=True, use_records
             from_record = True
         else:
             solar_prod_kwh_hh = (
-                (0 if pos[0] <= 0 else solar_model_table.get(pos, 0))
+                (0 if pos[0] <= 0 else solar_pos_model.get(pos, 0))
                 * SITE["solar"].get("actual_scale_output", 1)
                 / SITE["solar"].get("model_scale_output", 1)
             )
@@ -1181,17 +1203,17 @@ def plot_solar_production(start="2023-01-06 00:00:00 Z", end=None, verbose=False
         tot_solar += kwh
     title('total solar generation')
     print('total solar generator', tot_solar)
+    real = pd.DataFrame(series_real, index=series_t_real)
+    print(real)
+    plt.figure(figsize=(12, 8))
     plt.scatter(series_t_real, series_real, label="real readings", marker='+', c='black')
     plt.plot(series_t, series_model, label="model")
     plt.xlabel("date")
     plt.ylabel("daily kWh output")
     plt.legend()
-    plt.show()
-    plt.savefig("dailysolar2.png")
-
+    plt.savefig("dailysolar.png")
 
 plot_solar_production()
-
 
 def work_out_agile_charge_slots(slots, verbose):
     agile_series = [(get_agile(x), x) for x in slots]
@@ -1267,7 +1289,7 @@ def work_out_prices_today(actual, electricity_costs, tday, verbose=False):
 def plot_days(results, name):
     m = results["day_cost_map"]
     days = sorted(m.keys())
-    #plt.figure(figsize=(12, 8))
+    plt.figure(figsize=(12, 8))
     for k in [
         "electricity_import_cost",
         "gas_import_cost",
@@ -1275,7 +1297,6 @@ def plot_days(results, name):
         #'solar_production'
     ]:
         plt.plot(days, [m[d][k] for d in days], label=k)
-
     plt.title(results["name"])
     plt.legend()
     plt.show()
@@ -1283,44 +1304,50 @@ def plot_days(results, name):
     return plt
 
 
-def plot(results_list):
-    f, (ax1, ax2, ax3, ax4) = matplotlib.pyplot.subplots(4, 1, sharex=True)
+def plot_simulations(results_list):
+        
+    f, axs = matplotlib.pyplot.subplots(4, 1, sharex=True)
     f.set_figwidth(18)
     f.set_figheight(18)
+    for i, field in enumerate(['day_costs', 'soc_daily_lows','kwh_days',  'cost_series']):
+        df = pd.concat([r[field] for r in results_list], axis=1)
+        df.plot(ax=axs[i])
+        title(field)
+        print(df.to_string())
+        axs[i].legend()
+    # for r in results_list:
+    #     title('rendering '+r['name'])
+    #     print('day costs', r['day_costs'])
+    #     #r['day_costs'].plot(ax=ax1,color=r['color'])
+    #     ax1.set_ylabel("cumulative cost, £")
+    #     print('soc daily lows', r['soc_daily_lows'])
+    #     r['soc_daily_lows'].plot(ax=ax2, color=r["color"])
+    #     ax2.set_ylabel("battery daily low %")
 
-    for r in results_list:
-        r['day_costs'].plot(ax=ax1,color=r['color'],label=r['name'])
-        ax1.set_ylabel("cumulative cost, £")
-        ax2.plot(r["days"], r["soc_daily_lows"], color=r["color"], label=r["name"])
-        ax2.set_ylabel("battery daily low %")
+    #     if [x for x in r["kwh_days"] if x > 0]:
+    #         r['kwh_days'].plot(ax=ax3, label=r['name'])
+    #     ax3.set_ylabel("solar production, Wh")
+    #     month_series=r['day_costs'].groupby([lambda x: datetime.datetime(year=x.year, month=x.month,day=14, hour=12,minute=0,second=0)]).sum()
+    #     print(month_series)
+    #     month_series.plot(ax=ax4, color=r["color"])
+    #     ax4.set_ylabel("monthly cost, £")
+    #     print("plan", r["name"], repr(r["cost_series"].tail(1)))
 
-        if [x for x in r["kwh_days"] if x > 0]:
-            ax3.plot(r["days"], r["kwh_days"])
-        ax3.set_ylabel("solar production, Wh")
-        month_series=r['day_costs'].groupby([lambda x: datetime.datetime(year=x.year, month=x.month,day=14, hour=12,minute=0,second=0)]).sum()
-        print(month_series)
-        month_series.plot(ax=ax4, color=r["color"], label=r["name"])
-        ax4.set_ylabel("monthly cost, £")
-        print("plan", r["name"], r["cost_series"][-1])
-
-    ax1.legend()
-    ax2.legend()
-    ax4.legend()
-    return f
+    f.savefig("run.png")
 
 
-simulate_tariff_and_store(
-    name="actual",
-    actual=True,
-    verbose=False,
-    grid_charge=True,
-    start=t0,
-    end=tnow,
-    grid_discharge=True,
-    saving_sessions_discharge=True,
-    solar=True,
-)
-if 1:
+def run_simulations():
+    simulate_tariff_and_store(
+        name="actual",
+        actual=True,
+        verbose=False,
+        grid_charge=True,
+        start=t0,
+        end=tnow,
+        grid_discharge=True,
+        saving_sessions_discharge=True,
+        solar=True,
+    )
     simulate_tariff_and_store(
         name="discharge flux",
         electricity_costs=SITE["tariffs"]["flux"]["kwh_costs"],
@@ -1401,6 +1428,7 @@ if 1:
         color="pink",
         saving_sessions_discharge=True,
     )
+    return RUN_ARCHIVE
+RUN_ARCHIVE = memoize('simulations.pickle', run_simulations)
 
-f = plot(RUN_ARCHIVE)
-f.savefig("run.png")
+plot_simulations(RUN_ARCHIVE)
