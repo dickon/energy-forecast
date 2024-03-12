@@ -1224,7 +1224,13 @@ def generate_solar_production(start="2023-01-06 00:00:00 Z", end=None, verbose=F
     combined = pd.concat([real, model, records], axis=1)
     return combined
 
+
+
 def plot_solar_production():
+    bucket_description = 'weekly'
+    def bucketround(t):
+        return datetime.datetime(year=t.year, month=t.month, day =((t.day-1) // 7)*7+1)
+
     combined = memoize('solar_production.pickle', generate_solar_production, max_age_days=14)
     
     combined['actual to max percentage'] = combined['real'] / combined['model']
@@ -1234,8 +1240,12 @@ def plot_solar_production():
     combined['real_kwh'] = combined['real'] / 1000.0
     combined['model_kwh'] = combined['model'] / 1000.0
 
-    monthlies = combined.groupby(combined.index.map(lambda t: datetime.datetime(year=t.year, month=t.month, day=14))).mean()
+    monthlies = combined.groupby(combined.index.map(bucketround)).mean()
     print(monthlies.to_string())
+    clouds = solar_model_record['clouds'].loc[solar_model_record['clouds'].index > '2023-01-01 00:00:00']
+    cloud_monthlies = 1 - clouds.groupby(clouds.index.map(bucketround)).mean() / 100
+    title('cloud boxes')
+    print(cloud_monthlies.to_string())
     plt.figure(figsize=(12, 8))
     f, axs = matplotlib.pyplot.subplots(2, 1, sharex=True)
     combined.plot(ax=axs[0], y='real_kwh', style='.')
@@ -1245,11 +1255,9 @@ def plot_solar_production():
     axs[0].set_ylabel("daily kWh output")
     axs[0].legend()
 
-    
-    
-
     fig = combined.plot(ax=axs[1], y='actual to max percentage', label='daily basis')
-    monthlies.plot(ax=axs[1], y='actual to max percentage', label='monthly basis')
+    monthlies.plot(ax=axs[1], y='actual to max percentage', label=bucket_description + ' basis')
+    cloud_monthlies.plot(ax=axs[1], y='cloud percentage', label=bucket_description +' mean non-cloud cover, openweathermap', color='grey', legend=True)
     axs[1].set_ylabel("Ratio of reality to maximum sunshine model")
     fig.get_figure().savefig('solaractual_to_max.png')
 
