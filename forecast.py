@@ -1231,16 +1231,21 @@ def plot_solar_production():
     title('daily solar production analysis')
     print(combined.to_string())
     title('mohtly solar production analysis')
+    combined['real_kwh'] = combined['real'] / 1000.0
+    combined['model_kwh'] = combined['model'] / 1000.0
+
     monthlies = combined.groupby(combined.index.map(lambda t: datetime.datetime(year=t.year, month=t.month, day=14))).mean()
     print(monthlies.to_string())
     plt.figure(figsize=(12, 8))
     f, axs = matplotlib.pyplot.subplots(2, 1, sharex=True)
-    combined.plot(ax=axs[0], y='real', style='.')
+    combined.plot(ax=axs[0], y='real_kwh', style='.')
     #axs[0].scatter(series_t_real, series_real, label="real readings", marker='+', c='black')
-    combined.plot.line(ax=axs[0], y='model')
+    combined.plot.line(ax=axs[0], y='model_kwh')
     axs[0].set_xlabel("date")
     axs[0].set_ylabel("daily kWh output")
     axs[0].legend()
+
+    
     
 
     fig = combined.plot(ax=axs[1], y='actual to max percentage', label='daily basis')
@@ -1249,6 +1254,9 @@ def plot_solar_production():
     fig.get_figure().savefig('solaractual_to_max.png')
 
     f.savefig("dailysolar.png")
+
+    fig = combined.plot(ax=axs[0], y='real', style='.')
+    fig.get_figure().savefig('solar_actual.png')
 
 
 plot_solar_production()
