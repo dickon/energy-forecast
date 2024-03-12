@@ -292,7 +292,7 @@ def generate_solar_model(verbose=True):
             solar_pos_table[pos].append(max(0, usage))
             print('populate', repr(t), usage, 'actual=',actual)
         if actual:
-            solar_output_w[t.isoformat()] = max(0, usage)
+            solar_output_w[t] = max(0, usage)
 
     used_kwh_day = sum([x[1] for x in mean_time_of_day]) / 1000
     
@@ -367,8 +367,7 @@ def generate_solar_model(verbose=True):
         print('vue solar', res['_time'], res['_value'])
         populate(res["_time"], -res["_value"] / 2)
 
-    title('solar_output_w')
-    pprint.pprint(solar_output_w)
+
     title('filling model')
     
     solar_pos_model = { k:max(v) for k,v in solar_pos_table.items()}
@@ -422,6 +421,11 @@ solar_model_record = memoize(
 solar_output_w = solar_model_record ['solar_output_w']
 solar_pos_model = solar_model_record["solar_pos_model"]
 solar_model_table = solar_pos_model.items()
+
+if 0:
+    title('solar_output_w')
+    pprint.pprint(solar_output_w)
+
 
 usage_actual_text = data["usage_actual"]
 usage_actual = {
@@ -1138,7 +1142,7 @@ def work_out_electricity_usage(time_of_day, verbose):
     return usage_hh, usage_real
 
 
-def work_out_solar_production(time_of_day, verbose=True, solar=True, use_records=True):
+def work_out_solar_production(time_of_day, verbose=True, solar=True, use_records=True, realistic_sunshine_ratio=0.6):
     pos = get_solar_position_index(time_of_day)
     if not solar:
         solar_prod_kwh_hh = 0
@@ -1148,70 +1152,104 @@ def work_out_solar_production(time_of_day, verbose=True, solar=True, use_records
             solar_prod_kwh_hh = solar_output_w[time_of_day]
             from_record = True
         else:
+            if verbose:
+                print('solar model',pos, solar_pos_model.get(pos))
             solar_prod_kwh_hh = (
-                (0 if pos[0] <= 0 else solar_pos_model.get(pos, 0))
+                solar_pos_model.get(pos, 0)
                 * SITE["solar"].get("actual_scale_output", 1)
                 / SITE["solar"].get("model_scale_output", 1)
-            )
+            )*realistic_sunshine_ratio
+            
             from_record = False
     if verbose:
         print(time_of_day, "solar position", pos, "solar production", solar_prod_kwh_hh, 'from record', from_record, 'use_records', use_records)
+    assert solar_prod_kwh_hh is not None
     return pos, solar_prod_kwh_hh, from_record
 
 
-def plot_solar_production(start="2023-01-06 00:00:00 Z", end=None, verbose=False):
+def generate_solar_production(start="2023-01-06 00:00:00 Z", end=None, verbose=False):
     title('working out solar production and model')
     t = datetime.datetime.strptime(start, "%Y-%m-%d %H:%M:%S %z")
     end = datetime.datetime.strptime(end, "%Y-%m-%d %H:%M:%S %z") if end else tnow
     series_real = []
+    real_records  = []
     series_model = []
     series_t = []
     series_t_real = []
     while t < end:
-        for use_records in [False, True]:
-            wh_day = 0
+        wh_day_records = 0
+        wh_day_model = 0
+        records  = 0
+        for hh in range(48):
+            time_of_day = t + datetime.timedelta(minutes=30 * hh)
+            pos, wh_from_records, from_records = work_out_solar_production(
+                time_of_day, use_records=True, verbose=False, realistic_sunshine_ratio=1.0
+            )
+            pos2, wh_from_model, from_records_2 = work_out_solar_production(
+                time_of_day, use_records=False, verbose=False, realistic_sunshine_ratio=1.0
+            )
+            assert from_records_2 == False
+            if verbose:
+                print(f'{t} {pos} wh_rec={wh_from_records} from_records={from_records} wh_model={wh_from_model}')
+            if from_records:
+                records += 1
+            wh_day_records += wh_from_records
+            wh_day_model += wh_from_model
+            
+        if verbose:
+            print('dailysolar',t, 'model', wh_day_model, 'actual', wh_day_records, 'with records=',records, time_of_day in solar_output_w)
 
-            records  = 0
-            for hh in range(48):
-                time_of_day = t + datetime.timedelta(minutes=30 * hh)
-                pos, wh_hh, from_records = work_out_solar_production(
-                    time_of_day, use_records=use_records, verbose=use_records
-                )
-                if use_records:
-                    if use_records and not from_records and pos[0] > 0:
-                        print("solar records gap, synth", time_of_day, pos, wh_hh)
-                    else:
-                        print('solar records at', time_of_day, pos, wh_hh)
-                        records += 1
-                wh_day += wh_hh
-
-            if use_records:
-                print(t, 'wh day', wh_day, 'records', records)
-                if records > 28:
-                    series_t_real.append(t)
-                    series_real.append(wh_day / 1000)
-            else:
-                series_model.append(wh_day / 1000)
         series_t.append(t)
+        series_model.append(wh_day_model)
+        if records > 12: # only store the actual if we mostly got it from real records
+            series_t_real.append(t)
+            series_real.append(wh_day_records)
+            real_records.append(records)
         t += datetime.timedelta(days=1)
     if verbose:
         title('real solar output:')
     tot_solar = 0
     for t, kwh in zip(series_t, series_real):
         if verbose:
-            print(t, kwh, '*'*int(kwh))
+            print(t, '{:4.1f}'.format(kwh), '*'*int(kwh))
         tot_solar += kwh
     title('total solar generation')
     print('total solar generator', tot_solar)
-    real = pd.DataFrame(series_real, index=series_t_real)
-    print(real)
+
+    real = pd.DataFrame({'real': series_real},  index=series_t_real)
+    model = pd.DataFrame({'model':series_model}, index=series_t)
+    records = pd.DataFrame({'records': real_records},  index=series_t_real)
+
+    title('solar daily real vs model')
+    combined = pd.concat([real, model, records], axis=1)
+    return combined
+
+def plot_solar_production():
+    combined = memoize('solar_production.pickle', generate_solar_production, max_age_days=14)
+    
+    combined['actual to max percentage'] = combined['real'] / combined['model']
+    title('daily solar production analysis')
+    print(combined.to_string())
+    title('mohtly solar production analysis')
+    monthlies = combined.groupby(combined.index.map(lambda t: datetime.datetime(year=t.year, month=t.month, day=14))).mean()
+    print(monthlies.to_string())
     plt.figure(figsize=(12, 8))
-    plt.scatter(series_t_real, series_real, label="real readings", marker='+', c='black')
-    plt.plot(series_t, series_model, label="model")
-    plt.xlabel("date")
-    plt.ylabel("daily kWh output")
-    plt.legend()
-    plt.savefig("dailysolar.png")
+    f, axs = matplotlib.pyplot.subplots(2, 1, sharex=True)
+    combined.plot(ax=axs[0], y='real', style='.')
+    #axs[0].scatter(series_t_real, series_real, label="real readings", marker='+', c='black')
+    combined.plot.line(ax=axs[0], y='model')
+    axs[0].set_xlabel("date")
+    axs[0].set_ylabel("daily kWh output")
+    axs[0].legend()
+    
+
+    fig = combined.plot(ax=axs[1], y='actual to max percentage', label='daily basis')
+    monthlies.plot(ax=axs[1], y='actual to max percentage', label='monthly basis')
+    axs[1].set_ylabel("Ratio of reality to maximum sunshine model")
+    fig.get_figure().savefig('solaractual_to_max.png')
+
+    f.savefig("dailysolar.png")
+
 
 plot_solar_production()
 
@@ -1429,6 +1467,6 @@ def run_simulations():
         saving_sessions_discharge=True,
     )
     return RUN_ARCHIVE
-RUN_ARCHIVE = memoize('simulations.pickle', run_simulations)
+RUN_ARCHIVE = memoize('simulations.pickle', run_simulations, max_age_days=0)
 
 plot_simulations(RUN_ARCHIVE)
