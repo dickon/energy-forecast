@@ -23,7 +23,7 @@ There are a number of data sources we can use:
 
 Couting up the output for each day using by clamp transformer monitoring and, when I got it, the battery system monitoring, we have:
 
-![solar dialy](solardaily.png).
+![solar actual](solar_actual.png).
 
 
 Aggregating into 30 minute buckets and showing time of day on the Y axis, we have:
