@@ -40,4 +40,7 @@ I then work out the peak solar output we've seen in a 30 minute period for solar
 My solar panels are on a roof facing east south east, and the treeline is fairly high in my area. Other system will get very different fingerprints.
 
 So that's the maximum. Since I installed the system there's been a lot of cloud. We can compare what we would get by integrating the azium/elevation chart against the
-sun positions for a day, which gives us a maximum, and then compare that.
+sun positions for a day, which gives us a maximum. This can be integrated for a given day to give an approximate upper bound on what we'd get if we have clear skies all day.
+This can then be plotted against the output, and bucketted to the week, to give:
+
+![dialysolar](dailysolar.png)
