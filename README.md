@@ -19,7 +19,25 @@ There are a number of data sources we can use:
 2. Solar inverter monitoring (e.g. SolarEdge monitoring, 15 minute resolution)
 3. Clamp transformer current monitoring (Vue Emporia, 5 second resolution)
 4. Battery system monitoring (e.g. Tesla Gateway for me, 3 second resolution)
+5. Weather data.
+
+Couting up the output for each day using by clamp transformer monitoring and, when I got it, the battery system monitoring, we have:
+
+![solar dialy](solardaily.png).
+
+
+Aggregating into 30 minute buckets and showing time of day on the Y axis, we have:
 
 
 ![time series](solartimes.png)
 
+The structure becomes more self evident.
+
+I then work out the peak solar output we've seen in a 30 minute period for solar azimuth and elevation, and fill in gaps using the nearest point we have:
+
+![solar model](solarmodel.png)
+
+My solar panels are on a roof facing east south east, and the treeline is fairly high in my area. Other system will get very different fingerprints.
+
+So that's the maximum. Since I installed the system there's been a lot of cloud. We can compare what we would get by integrating the azium/elevation chart against the
+sun positions for a day, which gives us a maximum, and then compare that.
