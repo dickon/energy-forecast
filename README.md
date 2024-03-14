@@ -51,5 +51,5 @@ This can then be plotted against the output, and bucketted to the week, to give:
 
 # Results
 
-![overall resukts](run.png)
+![overall results](run.png)
 
