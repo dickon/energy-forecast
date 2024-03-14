@@ -68,4 +68,7 @@ To make sense of this, here's some context:
  - Switched to Octopus Flux in October 2023
  - The big negative cost spikes in winter 2023/24 are Octopus Savings Sessions payments, where effectively
    the output rate shoots up for 30 to 90 minutes.
-
+ - The scenarios in the future cover everything from what would have happened without solar or batteries and using gas for hot water, through
+   to various Octous tariff combinations. It looks like if I stay with one tariff over the year for simplicity than Flux is a big win. And, surprisingly,
+   Octopus Agile with dumping out the batteries when prices go high in the winter isn't worth it for us since that means forgoing the Savings Sessions payments.
+   This is because Savings Sessions payments are only made relatively to what you normally do over the last 10 working days. 
