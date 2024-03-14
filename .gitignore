@@ -5,8 +5,6 @@ agile incoming and outgoing.png
 discharge flux.png
 flexible no solar no batteries.png
 flux.png
-run.png
-solarmodel.png
 winter agile.png
 __pycache__/caching.cpython-310.pyc
 __pycache__/energy_forecast_site.cpython-310.pyc
@@ -15,4 +13,4 @@ __pycache__/solar.cpython-310.pyc
 __pycache__/time_utils.cpython-310.pyc
 forcecast.log
 dailysolar2.png
-solarmodel2.png
+forecast.log

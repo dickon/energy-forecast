@@ -44,3 +44,12 @@ sun positions for a day, which gives us a maximum. This can be integrated for a 
 This can then be plotted against the output, and bucketted to the week, to give:
 
 ![dialysolar](dailysolar.png)
+
+# Electricity demand modelling
+
+# Battery modelling
+
+# Results
+
+![overall resukts](run.png)
+
