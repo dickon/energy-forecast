@@ -45,11 +45,27 @@ This can then be plotted against the output, and bucketted to the week, to give:
 
 ![dialysolar](dailysolar.png)
 
-# Electricity demand modelling
+# Step 2 - Energy  demand modelling
 
-# Battery modelling
+# Step 3 - Battery modelling
+
+# Step 4 - Octopus tariff integration
 
 # Results
 
+For my house:
+
 ![overall results](run.png)
+
+To make sense of this, here's some context:
+
+ - The house has gas central heating, used for radiators. Hot water is handled by immersion at various times of day, from March through October using
+   solar power, and from October 2023 using overnight off peak electricity. This is because the gas boiler typically use 10kWh/day for hot water, and the 
+   immersion heater only uses 3kWh/day. 
+ - 11.7kW of solar panels installed in January 2023
+ - Electricity and gas supplied up to February 2024 
+ - 2 Tesla Powerwall 2 batteries installed September 2023
+ - Switched to Octopus Flux in October 2023
+ - The big negative cost spikes in winter 2023/24 are Octopus Savings Sessions payments, where effectively
+   the output rate shoots up for 30 to 90 minutes.
 
