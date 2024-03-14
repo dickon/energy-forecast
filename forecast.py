@@ -283,7 +283,7 @@ def generate_solar_model(verbose=True):
     overridden = {}
 
     def populate(t, usage, actual=True):
-        if t in overridden:
+        if t in overridden and not actual:
             print('overriden', t, 'usage', usage, 'by', overridden[t])
             return
         pos = get_solar_position_index(t)
@@ -535,21 +535,24 @@ def plot_solar_azimuth_altitude_chart(solar_model_table):
 
 plot_solar_azimuth_altitude_chart(solar_model_table).show()
 
-values = [x for x in solar_output_w.items() if x[1] > 20]
 
 
 def plot_solar_times():
+    values = [x for x in solar_output_w.items() if x[1] > 20]
     plt.figure(figsize=(12, 8))
     plt.scatter(
         [t for t, _ in values],
         [t.hour + t.minute / 60 for t, _ in values],
         s=[v / 100 for _, v in values],
-        c=[v * 2 for _, v in values],
+        c=[v * 2/1000 for _, v in values],
     )
     plt.xlabel("date")
     plt.ylabel("time of day")
-    plt.colorbar()
+    plt.colorbar(label='kW')
     plt.savefig('solartimes.png')
+    print('generated solartimes.png')
+
+plot_solar_times()
 
 def get_daily_gas_use():
     tback = t0
@@ -697,6 +700,10 @@ def simulate_tariff(
     battery_commision_date = datetime.datetime.strptime(
         SITE["powerwall"]["commission_date"], "%Y-%m-%d %H:%M:%S %z"
     )
+    if actual:
+        sessions = do_query("""
+    |> filter(fn: (r) => r["_measurement"] == "savings session")
+    """, "56new", start, end)
     t = start
     for day in range((end - start).days):
         tday = t + datetime.timedelta(days=day)
@@ -756,7 +763,7 @@ def simulate_tariff(
                 time_of_day,
                 verbose,
                 winter_agile_import,
-                saving_sessions_discharge,
+                saving_sessions_discharge and not actual,
             )
             if hh == 0:
                 gas_kwh_day = gas_use.get(tmodel.strftime("%Y-%m-%d"), 0) / 1000 + (
@@ -817,6 +824,11 @@ def simulate_tariff(
                 + export_payment_hh
                 + battery_wear_cost
             )
+            if actual:
+                for rec in sessions:
+                    if rec['_time'] >= time_of_day and rec['_time'] < time_of_day+datetime.timedelta(minutes=30):
+                        print('saving session at', time_of_day,'is',rec)
+                        hh_cost -= rec['_value']
             cost += hh_cost
             electricity_import_cost += electricty_cost_hh
             electricity_export_cost += export_payment_hh
@@ -903,7 +915,7 @@ def in_savings_session(time_of_day):
         or (time_of_day.month in [1, 2] and time_of_day.year >= 2024)
     ) and (
         time_of_day.month in [12, 1, 2]
-        and time_of_day.day in [7, 14, 21]
+        and time_of_day.day in [7, 14, 21, 28]
         and (
             time_of_day.hour == 17
             or (time_of_day.hour == 18 and time_of_day.minute < 30)
@@ -1125,7 +1137,7 @@ def work_out_prices_now(
     if time_of_day < t_solar_export_payments_start:
         price["export"] = 0
     if savings_session_discharge and in_savings_session(time_of_day):
-        price["export"] += 4.2
+        price["export"] += 2
     return price
 
 
@@ -1231,7 +1243,7 @@ def plot_solar_production():
     def bucketround(t):
         return datetime.datetime(year=t.year, month=t.month, day =((t.day-1) // 7)*7+1)
 
-    combined = memoize('solar_production.pickle', generate_solar_production, max_age_days=14)
+    combined = memoize('solar_production.pickle', generate_solar_production, max_age_days=0)
     
     combined['actual to max percentage'] = combined['real'] / combined['model']
     title('daily solar production analysis')
@@ -1257,13 +1269,14 @@ def plot_solar_production():
 
     fig = combined.plot(ax=axs[1], y='actual to max percentage', label='daily basis')
     monthlies.plot(ax=axs[1], y='actual to max percentage', label=bucket_description + ' basis')
-    cloud_monthlies.plot(ax=axs[1], y='cloud percentage', label=bucket_description +' mean non-cloud cover, openweathermap', color='grey', legend=True)
+    cloud_monthlies.plot(ax=axs[1], y='cloud percentage', label=bucket_description +' mean non-cloud cover, openweathermap', color='#909090', legend=True)
     axs[1].set_ylabel("Ratio of reality to maximum sunshine model")
     fig.get_figure().savefig('solaractual_to_max.png')
 
     f.savefig("dailysolar.png")
 
-    fig = combined.plot(ax=axs[0], y='real', style='.')
+    fig = combined.plot(y='real_kwh', style='.')
+    fig.set_ylabel('daily kWh solar production')
     fig.get_figure().savefig('solar_actual.png')
 
 
