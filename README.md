@@ -7,6 +7,8 @@ Currently this repo is exclusively targetting my home's solar panels, batteries,
 and gas and electric heating but I have made a start on generalising out site specific parameters. That's partly
 to avoid putting sensitive material into this public git repository.
 
+Code is in [forceast.py](forecast.py), which requires a site specific configuration file which is not included.
+
 ## Step 1 - modelling solar production
 
 Electricity import and export prices vary for me which change every 30 minutes. My electricity and gas billing metering also
@@ -45,7 +47,11 @@ This can then be plotted against the output, and bucketted to the week, to give:
 
 ![dialysolar](dailysolar.png)
 
-# Step 2 - Energy  demand modelling
+# Step 2 - Energy demand modelling
+
+Time of day matters of electricty demand matters wen considering solar power. The utility company meter gives me 30 minute resolution, when it works.
+I have a [Vue Emporia energy montiros](https://www.emporiaenergy.com/energy-monitors) and I can get high resolution information from them.
+
 
 # Step 3 - Battery modelling
 
@@ -57,18 +63,25 @@ For my house:
 
 ![overall results](run.png)
 
-To make sense of this, here's some context:
+To make sense of this, here's some summary and context:
 
- - The house has gas central heating, used for radiators. Hot water is handled by immersion at various times of day, from March through October using
+ - So far, as of March 2024, my energy bills since Jan 2023 have been £1322, compared with £3418 if I'd done nothing. 
+ - In the next twelve months I expect to pay about £600 for energy, compared with £3000 if I'd done nothing.   
+ - The house has gas central heating, now used exclusively for radiators. 
+ - Hot water is handled by the system gas boiler up to March 2023, then immersion at various times of day, from March 2023 through October 2023 using
    solar power, and from October 2023 using overnight off peak electricity. This is because the gas boiler typically use 10kWh/day for hot water, and the 
-   immersion heater only uses 3kWh/day. 
- - 11.7kW of solar panels installed in January 2023
- - Electricity and gas supplied up to February 2024 
- - 2 Tesla Powerwall 2 batteries installed September 2023
- - Switched to Octopus Flux in October 2023
+   immersion heater only uses 3kWh/day. (I'm interested in hot water tank heat pumps, but the noise is a concern).
+ - 11.7kW of solar panels installed in January 2023. 
+ - Electricity and gas supplied up to February 2024 by Ovo Energy on a cheap fixed tariff deal which is no longer available.
+ - 2 Tesla Powerwall 2 batteries installed September 2023. 13.5kWh nominal each.
+ - We switched to Octopus Flux in October 2023
  - The big negative cost spikes in winter 2023/24 are Octopus Savings Sessions payments, where effectively
    the output rate shoots up for 30 to 90 minutes.
  - The scenarios in the future cover everything from what would have happened without solar or batteries and using gas for hot water, through
    to various Octous tariff combinations. It looks like if I stay with one tariff over the year for simplicity than Flux is a big win. And, surprisingly,
    Octopus Agile with dumping out the batteries when prices go high in the winter isn't worth it for us since that means forgoing the Savings Sessions payments.
    This is because Savings Sessions payments are only made relatively to what you normally do over the last 10 working days. 
+
+
+- Dr. Dickon Reed, last updated 15 March 2024.
+- dickon@cantab.net
