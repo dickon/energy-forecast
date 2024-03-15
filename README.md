@@ -67,8 +67,12 @@ To make sense of this, here's some summary and context:
 
  - So far, as of March 2024, my energy bills since Jan 2023 have been £1322, compared with £3418 if I'd done nothing. 
  - In the next twelve months I expect to pay about £600 for energy, compared with £3000 if I'd done nothing.   
- - The house has gas central heating, now used exclusively for radiators. 
- - Hot water is handled by the system gas boiler up to March 2023, then immersion at various times of day, from March 2023 through October 2023 using
+ - The house has gas central heating, now used exclusively for radiators. Gas consumption is included in the actual data and simulations. 
+   We use approximately 20,000 kWh of gas per year, currently at 7.31p/kWh, 27.47p a day standing charge, so that's about £1600 a year. 
+   So without gas my electricity bill is about -£1000/year for now. I'm considering moving to heat pumps, probably air to air. That might
+   half our heating cost, though saving £800/year represents a long paybaack period on an expensive air to air system, with no government help 
+   (and to be fair, no VAT either). So the motivation is mainly to reduce CO2 and to provide comfort in the rare summer heatwaves.
+- Hot water is handled by the system gas boiler up to March 2023, then immersion at various times of day, from March 2023 through October 2023 using
    solar power, and from October 2023 using overnight off peak electricity. This is because the gas boiler typically use 10kWh/day for hot water, and the 
    immersion heater only uses 3kWh/day. (I'm interested in hot water tank heat pumps, but the noise is a concern).
  - 11.7kW of solar panels installed in January 2023. 
