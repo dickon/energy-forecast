@@ -76,7 +76,7 @@ To make sense of this, here's some summary and context:
    solar power, and from October 2023 using overnight off peak electricity. This is because the gas boiler typically use 10kWh/day for hot water, and the 
    immersion heater only uses 3kWh/day. (I'm interested in hot water tank heat pumps, but the noise is a concern).
  - 11.7kW of solar panels installed in January 2023. 
- - Electricity and gas supplied up to February 2023 by Ovo Energy on a cheap fixed tariff deal (2.66p/kWh gas, 15.59p/kWh electricity) which is no longer available.
+ - Electricity and gas was supplied up to February 2023 by Ovo Energy on a cheap fixed tariff deal (2.66p/kWh 24.79p standing charge gas, 15.59p/kWh 23.33p standing charge electricity) which is no longer available.
  - 2 Tesla Powerwall 2 batteries installed September 2023. 13.5kWh nominal each.
  - We switched to Octopus Flux in October 2023
  - The big negative cost spikes in winter 2023/24 are Octopus Savings Sessions payments, where effectively
