@@ -122,7 +122,7 @@ def do_query(
     return resl[0]
 
 
-def memoize(filename, generate, max_age_days=7):
+def memoize(filename, generate, max_age_days=0):
     if os.path.exists(filename):
         mtime = os.stat(filename).st_mtime
         mtime_date = datetime.datetime.fromtimestamp(mtime)
@@ -671,7 +671,8 @@ def simulate_tariff(
     color="grey",
     verbose=False,
     start=tnow,
-    end=tnow + datetime.timedelta(days=365)
+    end=tnow + datetime.timedelta(days=365),
+    balance=0.0,
 ):
     title('modelling '+name)
     if electricity_costs is None:
@@ -687,7 +688,7 @@ def simulate_tariff(
         print("run simulation", name)
     kwh_days = []
     soc = battery_size if battery else 0
-    cost = 0
+    cost = balance
     cost_series = []
     solar_prod_total = 0
     days = []
@@ -824,7 +825,7 @@ def simulate_tariff(
                 + export_payment_hh
                 + battery_wear_cost
             )
-            if actual:
+            if actual and saving_sessions_discharge:
                 for rec in sessions:
                     if rec['_time'] >= time_of_day and rec['_time'] < time_of_day+datetime.timedelta(minutes=30):
                         print('saving session at', time_of_day,'is',rec)
@@ -893,7 +894,7 @@ def simulate_tariff(
     return {
         "day_cost_map": day_cost_map,
         "day_costs" :  pd.DataFrame({name:day_costs}, index=days), 
-        "annual cost": cost_series[-1],
+        "final_cost": cost_series[-1],
         "name": name,
         "soc_daily_lows": pd.DataFrame({name:soc_daily_lows}, index=days),
         "color": color,
@@ -907,7 +908,9 @@ def simulate_tariff_and_store(name, **params):
     results = simulate_tariff(name, **params)
     RUN_ARCHIVE.append(results)
     plot_days(results, name)
-
+    final_cost =  results['final_cost']
+    print(name, 'final cost', final_cost)
+    return final_cost
 
 def in_savings_session(time_of_day):
     return (
@@ -1243,7 +1246,7 @@ def plot_solar_production():
     def bucketround(t):
         return datetime.datetime(year=t.year, month=t.month, day =((t.day-1) // 7)*7+1)
 
-    combined = memoize('solar_production.pickle', generate_solar_production, max_age_days=0)
+    combined = memoize('solar_production.pickle', generate_solar_production)
     
     combined['actual to max percentage'] = combined['real'] / combined['model']
     title('daily solar production analysis')
@@ -1404,7 +1407,20 @@ def plot_simulations(results_list):
 
 
 def run_simulations():
-    simulate_tariff_and_store(
+
+    balance_base_line = simulate_tariff_and_store(
+        name="baseline without batteries",
+        actual=True,
+        verbose=True,
+        grid_charge=False,
+        start=t0,
+        end=tnow,
+        grid_discharge=False,
+        battery = False,
+        saving_sessions_discharge=False,
+        solar=False
+    )
+    balance = simulate_tariff_and_store(
         name="actual",
         actual=True,
         verbose=False,
@@ -1415,8 +1431,15 @@ def run_simulations():
         saving_sessions_discharge=True,
         solar=True,
     )
+
+
+    title("Current balance")
+    print('with batteries and solar=',balance, 'base-line without batteries and without solar=', balance_base_line)
+
+    title("Simulations")
     simulate_tariff_and_store(
         name="discharge flux",
+        balance=balance,
         electricity_costs=SITE["tariffs"]["flux"]["kwh_costs"],
         grid_charge=True,
         grid_discharge=True,
@@ -1428,6 +1451,7 @@ def run_simulations():
     )
     simulate_tariff_and_store(
         name="agile incoming and fixed outgoing",
+        balance=balance,
         electricity_costs=[
             {
                 "start": 0,
@@ -1447,6 +1471,7 @@ def run_simulations():
     )
     simulate_tariff_and_store(
         name="agile incoming and outgoing",
+        balance=balance,
         electricity_costs=[
             {
                 "start": 0,
@@ -1469,6 +1494,7 @@ def run_simulations():
 
     simulate_tariff_and_store(
         name="flexible no solar no batteries",
+        balance=balance,
         gas_hot_water=True,
         verbose=False,
         battery=False,
@@ -1477,6 +1503,7 @@ def run_simulations():
 
     simulate_tariff_and_store(
         name="flux",
+        balance=balance,
         electricity_costs=SITE["tariffs"]["flux"]["kwh_costs"],
         grid_charge=True,
         battery=True,
@@ -1486,6 +1513,7 @@ def run_simulations():
     )
     simulate_tariff_and_store(
         name="winter agile",
+        balance=balance,
         electricity_costs=SITE["tariffs"]["flux"]["kwh_costs"],
         winter_agile_import=True,
         grid_charge=True,
