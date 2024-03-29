@@ -14,3 +14,4 @@ __pycache__/time_utils.cpython-310.pyc
 forcecast.log
 dailysolar2.png
 forecast.log
+*.pickle
