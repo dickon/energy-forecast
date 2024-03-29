@@ -742,7 +742,7 @@ def simulate_tariff(
             )
             solar_prod_total += solar_prod_wh_hh
             solar_today += solar_prod_wh_hh
-            kwh += solar_prod_wh_hh
+            kwh += solar_prod_wh_hh / 1e3
             usage_hh, usage_real = work_out_electricity_usage(time_of_day, verbose)
             if time_of_day.hour >= 2 and gas_hot_water_saving > 0:
                 discount = min(gas_hot_water_saving, usage_hh - 100)
@@ -1385,6 +1385,7 @@ def plot_simulations(results_list):
         title(field)
         print(df.to_string())
         axs[i].legend()
+        axs[i].set_ylabel(field)
     # for r in results_list:
     #     title('rendering '+r['name'])
     #     print('day costs', r['day_costs'])
