@@ -42,8 +42,10 @@ tnow = datetime.datetime.strptime(
 
 
 def parse_time(s):
-    return datetime.datetime.strptime(s, "%Y-%m-%d %H:%M:%S %z")
-
+    try:
+        return datetime.datetime.strptime(s, "%Y-%m-%d %H:%M:%S%z")
+    except ValueError:
+        return datetime.datetime.strptime(s, "%Y-%m-%d %H:%M:%S %z")
 
 overrides = {}
 for bill in SITE["bills"]:
@@ -60,7 +62,7 @@ for bill in SITE["bills"]:
                 "import_kwh": bill["electricity_import_kwh"] / num_days,
             }
 
-EPOCH = parse_time("1975-01-01 00:00:00 Z")
+EPOCH = parse_time("1975-01-01 00:00:00Z")
 
 
 def time_string(dt):
@@ -410,7 +412,7 @@ txover = datetime.datetime.strptime(
     SITE["powerwall"]["commission_date"], "%Y-%m-%d %H:%M:%S %z"
 )
 t_solar_export_payments_start = datetime.datetime.strptime(
-    SITE["solar"]["export_payments_start_date"], "%Y-%m-%d %H:%M:%S %z"
+    SITE["solar"]["export_payments_start_date"], "%Y-%m-%d %H:%M:%S%z"
 )
 data = memoize("kwh_use_time_of_day.pickle", generate_mean_time_of_day)
 mean_time_of_day = data["mean_time_of_day"]
@@ -920,8 +922,7 @@ def in_savings_session(time_of_day):
         time_of_day.month in [12, 1, 2]
         and time_of_day.day in [7, 14, 21, 28]
         and (
-            time_of_day.hour == 17
-            or (time_of_day.hour == 18 and time_of_day.minute < 30)
+             (time_of_day.hour == 18 and time_of_day.minute < 30)
         )
     )
 
@@ -1088,7 +1089,7 @@ def compare_with_bills(day_cost_map):
             )
         for i in range((end - start).days):
             day = start + datetime.timedelta(days=i)
-            print(day, day_cost_map[day])
+            print(day, day_cost_map.get(day))
             for field, x in day_cost_map.get(day, {}).items():
                 day_cost.setdefault(field, 0)
                 day_cost[field] += x
@@ -1140,7 +1141,7 @@ def work_out_prices_now(
     if time_of_day < t_solar_export_payments_start:
         price["export"] = 0
     if savings_session_discharge and in_savings_session(time_of_day):
-        price["export"] += 2
+        price["export"] += 1
     return price
 
 
