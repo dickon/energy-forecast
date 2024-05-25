@@ -21,7 +21,7 @@ plt.rcParams["figure.figsize"] = (20,12)
 RUN_ARCHIVE = []
 TIME_STRING_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
-AZIMUTH_RESOLUTION = 3
+AZIMUTH_RESOLUTION = 1
 ALTITUDE_RESOLUTION = 1
 
 SITE = json.load(open(os.path.expanduser("~/src/powerwallextract/site.json")))
@@ -133,7 +133,10 @@ def memoize(filename, generate, max_age_days=0):
         if age.days < max_age_days:
             try:
                 with open(filename, "rb") as fp:
-                    return pickle.load(fp)
+                    
+                    data = pickle.load(fp)
+                    print('loaded cache' ,filename)
+                    return data
             except:
                 print(f"unable read {filename}; generating")
                 traceback.print_exc()
@@ -289,7 +292,7 @@ def generate_solar_model(verbose=True):
             print('overriden', t, 'usage', usage, 'by', overridden[t])
             return
         pos = get_solar_position_index(t)
-        if t in clear_skies:
+        if t in clear_skies or True:
             solar_pos_table.setdefault(pos, list())
             solar_pos_table[pos].append(max(0, usage))
             print('populate', repr(t), usage, 'actual=',actual)
@@ -321,38 +324,38 @@ def generate_solar_model(verbose=True):
             est_gen_hh_wh = 1000 * weightings_map[t] * generated_kwh_day / tot_weight
             populate(t, est_gen_hh_wh, actual=False)
             overridden[t] = ('day override', est_gen_hh_wh)
-    if 1:
-        prev = None
-        prevt = None
-        title("querying powerwall solar data")
-        for res in do_query(
-            """
-            |> filter(fn: (r) => r["_measurement"] == "energy")
-                |> filter(fn: (r) => r["_field"] == "energy_exported")
-                |> filter(fn: (r) => r["meter"] == "solar")
-                    |> window(every: 30m)
-                    |> last()
-                    |> duplicate(column: "_stop", as: "_time")
-                    |> window(every: inf) """,
-            "powerwall",
-            EPOCH,
-            tnow,
-        ):
-            t = res["_time"]
-            value = res["_value"]
+    prev = None
+    prevt = None
+    title("querying powerwall solar data")
+    for res in do_query(
+        """
+        |> filter(fn: (r) => r["_measurement"] == "energy")
+            |> filter(fn: (r) => r["_field"] == "energy_exported")
+            |> filter(fn: (r) => r["meter"] == "solar")
+                |> window(every: 30m)
+                |> last()
+                |> duplicate(column: "_stop", as: "_time")
+                |> window(every: inf) """,
+        "powerwall",
+        EPOCH,
+        tnow,
+    ):
+        t = res["_time"]
+        value = res["_value"]
 
-            if prevt:
-                deltat = t - prevt
-                if deltat.seconds == 1800:
-                    usage = value - prev
-                    print('powerwall solar', t, 'usage', usage)
-                    populate(t, usage)
-                else:
-                    print('powerwall solar', t, 'gap', deltat, 'ignored usage', usage)
-                    
-            prevt = t
-            prev = value
+        if prevt:
+            deltat = t - prevt
+            if deltat.seconds == 1800:
+                usage = value - prev
+                print('powerwall solar', t, 'usage', usage)
+                populate(t, usage)
+            else:
+                print('powerwall solar', t, 'gap', deltat, 'ignored usage', usage)
+                
+        prevt = t
+        prev = value
     title("querying vue data")
+    x = 0
     for res in do_query(
         """
             |> filter(fn: (r) => r["_field"] == "usage")
@@ -368,6 +371,7 @@ def generate_solar_model(verbose=True):
     ):
         print('vue solar', res['_time'], res['_value'])
         populate(res["_time"], -res["_value"] / 2)
+        x += 1
 
 
     title('filling model')
@@ -427,7 +431,6 @@ solar_model_table = solar_pos_model.items()
 if 0:
     title('solar_output_w')
     pprint.pprint(solar_output_w)
-
 
 usage_actual_text = data["usage_actual"]
 usage_actual = {
@@ -1282,6 +1285,19 @@ def plot_solar_production():
     fig = combined.plot(y='real_kwh', style='.')
     fig.set_ylabel('daily kWh solar production')
     fig.get_figure().savefig('solar_actual.png')
+
+    start = (datetime.datetime.utcnow() - datetime.timedelta(days=365)).replace(tzinfo=datetime.timezone.utc)
+    print(start)
+    total_wh = 0
+    for i, row in combined.iterrows():
+        iu = i.replace(tzinfo=datetime.timezone.utc)
+        if iu > start:
+            p = row['real']
+            if math.isnan(row['real']):
+                p = row['model']*0.6
+            print(i, p)
+            total_wh += p
+    print(f'MWh in the last year ={total_wh / 1e6}')
 
 
 plot_solar_production()

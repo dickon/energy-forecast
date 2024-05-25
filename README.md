@@ -17,35 +17,42 @@ energy, down to at least 30 minute resolution.
 
 There are a number of data sources we can use:
 
-1. The electricity company meter (UK SMETS2 in my case) which produces a 30 minute time series.
-2. Solar inverter monitoring (e.g. SolarEdge monitoring, 15 minute resolution)
-3. Clamp transformer current monitoring (Vue Emporia, 5 second resolution)
-4. Battery system monitoring (e.g. Tesla Gateway for me, 3 second resolution)
-5. Weather data.
+1. The electricity company meter (UK SMETS2 in my case cloud polling) which produces a 30 minute time series.
+2. Solar inverter monitoring (SolarEdge monitoring cloud polling, 15 minute resolution)
+3. Clamp transformer current monitoring (Vue Emporia cloud polling, 5 second resolution)
+4. Battery system monitoring (Tesla Gateway local network access, 3 second resolution)
+5. Weather data. (openweathermap.org cloud polling via Home Assistant. Alternatively I could have installed my own weather sensors but I don’t see the point when high quality reasonably local data is reliably available for free)
 
-Couting up the output for each day using by clamp transformer monitoring and, when I got it, the battery system monitoring, we have:
+Counting up the output for each day using by Emporia clamp transformer monitoring and, later via Tesla system monitoring, we have:
 
 ![solar actual](solar_actual.png).
 
+So we see the expected seasonal trend, with peaks over 60kWh per day in the summer. We also see a lot of days that fall short; it has been very cloudy and wet in the period, perhaps more than the expected level for eastern England.
 
-Aggregating into 30 minute buckets and showing time of day on the Y axis, we have:
+If we count up in 30 minute buckets and plot with time of day on the Y axis, and use colour for the amount of electricity in the 30 minute bucket for that day we have:
 
 
 ![time series](solartimes.png)
 
-The structure becomes more self evident.
+In this form you can see that most of my peak generation is afternoon, which makes sense for an east-south-east facing array. We can also see that some days are better than others.
 
-I then work out the peak solar output we've seen in a 30 minute period for solar azimuth and elevation, and fill in gaps using the nearest point we have:
+I was curious about the best power level I've seen, for each position of the sun. So I examine time in half hour buckets for various sun position (solar azimuth and elevation), take the maximum and use an algorithm to use the nearest value when no data is recorded.
 
 ![solar model](solarmodel.png)
 
-My solar panels are on a roof facing east south east, and the treeline is fairly high in my area. Other system will get very different fingerprints.
+My solar panels are on a roof facing east south east, and the treeline is fairly high in my area. That may well mean that in some sun positions the panels are in snadow, which would account for some of the readings. Or it may be that we've never had clear skies in the first 15 months of operations with the sun in a certain position. So, I expect when rerunning this code later to get a few new record power levels which will fill out the plot. Other system swill get very different fingerprints. 
 
-So that's the maximum. Since I installed the system there's been a lot of cloud. We can compare what we would get by integrating the azium/elevation chart against the
-sun positions for a day, which gives us a maximum. This can be integrated for a given day to give an approximate upper bound on what we'd get if we have clear skies all day.
-This can then be plotted against the output, and bucketted to the week, to give:
+So, now I have some idea of the maximum for differnet sun positions, and this allows me to work out the maximum if the skies were clear on a daily absis. 
 
-![dialysolar](dailysolar.png)
+Since I installed the system there's been a lot of cloud. We can compare what we would get by integrating the azium/elevation chart against the
+sun positions for a day, which gives us a maximum. This can be integrated for a given day to give an approximate upper bound on what we'd get if we have clear skies all day. This maximum for each day according to our maximums for solar position can be plotted against time and overlaid the actual output. I also bucket to the week, and include the weekly mean cloud cover (taken as percentage of time with no cloud cover).
+
+![dailysolar](dailysolar.png)
+
+The line on the top graph is closer to sinusoid now, and I expect repeating this in a few years will show a smoother sinusoid. You can also see we've consistenly had a lot of cloud.
+Over the life of the system, for me the actual output is 60% of what we get on a clear day.
+
+Using the model to fill in some gaps in the monitoring, I have 9.38MWh in the 365 days up to 25 April 2024. In comparison, the SolarEdge design tool gave an output of 10.9MWh on an average year. That seemms within range given the famous unpredictability of British weather; it will be interesting once I have multiple years of data to see how this tracks.
 
 # Step 2 - Energy demand modelling
 
