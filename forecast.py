@@ -596,8 +596,8 @@ def get_daily_gas_use():
     wh_series = []
     t_series = []
 
-    age_series = []
     date_series = []
+    temp_series = []
     for row in list(res) + list(res2):
         temp = do_query(
             """
@@ -614,19 +614,27 @@ def get_daily_gas_use():
             extra='import "math"',
         )
 
-        age_series.append((tnow - row["_time"]).days)
-        t_series.append(max(0, row["_value"]))
+        if temp:
+            temp_series.append(temp[0]['_value'])
+        else:
+            temp_series.append(15.0)
+        t_series.append(row["_time"])
         wh_series.append(max(0, row["_value"]))
-        out[row["_time"].strftime("%Y-%m-%d")] = row["_value"]
+        out[row["_time"].strftime("%m-%d")] = row["_value"]
 
     plt.figure(figsize=(12, 8))
-    plt.scatter(wh_series, t_series, c=age_series, cmap="coolwarm_r")
+    plt.scatter(t_series,wh_series, c=temp_series, cmap="coolwarm_r")
     plt.xlabel("Wh gas used")
     plt.ylabel("mean outside temperature")
+    plt.savefig('gas.png')
+
     return out
 
 
 gas_use = memoize("gas.pickle", get_daily_gas_use)
+
+title('gas use')
+pprint.pprint(gas_use)
 
 
 actual_scale = 8860 / 7632
@@ -677,6 +685,8 @@ def simulate_tariff(
     verbose=False,
     start=tnow,
     end=tnow + datetime.timedelta(days=365),
+    grid_charge_hours = [2,3,4],
+    grid_charge_months = [1,2,3,4,5,6,7,8,9,10,11,12],
     balance=0.0,
 ):
     title('modelling '+name)
@@ -716,7 +726,8 @@ def simulate_tariff(
         tmodel = map_to_model_date(tday)
         # if 'discharge' in name and day > 400: verbose=True
         if verbose:
-            print("day", day, tday, "equivalent day in modelling period", tmodel)
+            print()
+            print("day", day, tday,name, "equivalent day in modelling period", tmodel)
         battery_today = battery and tday >= battery_commision_date
 
         electricity_costs_today, gas_kwh_cost, gas_sc_cost = work_out_prices_today(
@@ -772,14 +783,14 @@ def simulate_tariff(
                 saving_sessions_discharge and not actual,
             )
             if hh == 0:
-                gas_kwh_day = gas_use.get(tmodel.strftime("%Y-%m-%d"), 0) / 1000 + (
+                gas_kwh_day = gas_use.get(tmodel.strftime("m-%d"), 0) / 1000 + (
                     10 if gas_hot_water_saving_active else 0
                 )
                 gas_cost = gas_sc_cost + gas_kwh_day * gas_kwh_cost
                 gas_import_cost += gas_cost
                 if verbose:
                     print(
-                        f"{time_of_day} gas use {gas_kwh_day}kWh, cost £${gas_cost:.2f}"
+                        f"{time_of_day} gas use {gas_kwh_day}kWh, cost £{gas_cost:.2f}"
                     )
             else:
                 gas_cost = 0
@@ -790,7 +801,7 @@ def simulate_tariff(
             soc_delta, wh_from_grid = (
                 handle_energy_supply(battery_today, net_use, soc, time_of_day, verbose)
                 if net_use > 0
-                else handle_energy_excess(
+                else handle_solar_excess(
                     battery_today, net_use, soc, solar_prod_wh_hh, verbose
                 )
             )
@@ -806,6 +817,8 @@ def simulate_tariff(
                 time_of_day,
                 verbose,
                 wh_from_grid,
+                grid_charge_hours,
+                grid_charge_months
             )
 
             soc_delta, wh_from_grid = handle_grid_discharge(
@@ -907,7 +920,7 @@ def simulate_tariff(
         "cost_series": pd.DataFrame({name:cost_series}, index=days),
         "days": days,
     }
-
+final_costs = {}
 
 def simulate_tariff_and_store(name, **params):
     results = simulate_tariff(name, **params)
@@ -915,6 +928,7 @@ def simulate_tariff_and_store(name, **params):
     plot_days(results, name)
     final_cost =  results['final_cost']
     print(name, 'final cost', final_cost)
+    final_costs[name] = final_cost
     return final_cost
 
 def in_savings_session(time_of_day):
@@ -989,15 +1003,15 @@ def handle_grid_charge(
     time_of_day,
     verbose,
     wh_from_grid,
+    grid_charge_hours,
+    grid_charge_months
 ):
     if agile_charge:
         grid_charge_now = time_of_day in [x[1] for x in charge_slots] and (
             soc > battery_size * 0.5 and import_cost > 0.1
         )
     else:
-        grid_charge_now = (
-            time_of_day.hour >= 2 and time_of_day.hour < 5 and grid_charge and battery
-        ) and time_of_day.month in [1, 2, 10, 11, 12]
+        grid_charge_now = (time_of_day.hour in grid_charge_hours and grid_charge and battery) and time_of_day.month in grid_charge_months
     if grid_charge_now and battery_today:
         wh_from_grid += max(
             0,
@@ -1025,7 +1039,7 @@ def handle_grid_charge(
     return soc_delta, wh_from_grid
 
 
-def handle_energy_excess(battery_today, net_use, soc, solar_prod_wh_hh, verbose):
+def handle_solar_excess(battery_today, net_use, soc, solar_prod_wh_hh, verbose):
     # we have spare energy
     if solar_prod_wh_hh > 0:
         charge_delta = (
@@ -1403,6 +1417,7 @@ def plot_simulations(results_list):
         print(df.to_string())
         axs[i].legend()
         axs[i].set_ylabel(field)
+    
     # for r in results_list:
     #     title('rendering '+r['name'])
     #     print('day costs', r['day_costs'])
@@ -1425,30 +1440,31 @@ def plot_simulations(results_list):
 
 
 def run_simulations():
+    balance = balance_base_line = 0
 
-    balance_base_line = simulate_tariff_and_store(
-        name="baseline without batteries",
-        actual=True,
-        verbose=True,
-        grid_charge=False,
-        start=t0,
-        end=tnow,
-        grid_discharge=False,
-        battery = False,
-        saving_sessions_discharge=False,
-        solar=False
-    )
-    balance = simulate_tariff_and_store(
-        name="actual",
-        actual=True,
-        verbose=False,
-        grid_charge=True,
-        start=t0,
-        end=tnow,
-        grid_discharge=True,
-        saving_sessions_discharge=True,
-        solar=True,
-    )
+    # balance_base_line = simulate_tariff_and_store(
+    #     name="baseline without batteries",
+    #     actual=True,
+    #     verbose=True,
+    #     grid_charge=False,
+    #     start=t0,
+    #     end=tnow,
+    #     grid_discharge=False,
+    #     battery = False,
+    #     saving_sessions_discharge=False,
+    #     solar=False
+    # )
+    # balance = simulate_tariff_and_store(
+    #     name="actual",
+    #     actual=True,
+    #     verbose=False,
+    #     grid_charge=True,
+    #     start=t0,
+    #     end=tnow,
+    #     grid_discharge=True,
+    #     saving_sessions_discharge=True,
+    #     solar=True,
+    # )
 
 
     title("Current balance")
@@ -1456,92 +1472,121 @@ def run_simulations():
 
     title("Simulations")
     simulate_tariff_and_store(
-        name="discharge flux",
+        name="intelligent flux no grid charge",
         balance=balance,
-        electricity_costs=SITE["tariffs"]["flux"]["kwh_costs"],
-        grid_charge=True,
+        electricity_costs=SITE["tariffs"]["iof"]["kwh_costs"],
+        grid_charge=False,
         grid_discharge=True,
         battery=True,
         solar=True,
-        color="yellow",
+        color="black",
         verbose=True,
         saving_sessions_discharge=False,
+        grid_charge_hours = [0,1,2,3,5,6,7,8,9,10,11,12,13,14,19,20,21,22,23]
     )
     simulate_tariff_and_store(
-        name="agile incoming and fixed outgoing",
+        name="intelligent flux grid charge",
         balance=balance,
-        electricity_costs=[
-            {
-                "start": 0,
-                "end": 24,
-                "import": "agile",
-                "export": 0.15,
-            },
-        ],
+        electricity_costs=SITE["tariffs"]["iof"]["kwh_costs"],
         grid_charge=True,
         grid_discharge=True,
-        agile_charge=True,
         battery=True,
         solar=True,
-        color="blue",
-        saving_sessions_discharge=True,
-        verbose=False,
-    )
-    simulate_tariff_and_store(
-        name="agile incoming and outgoing",
-        balance=balance,
-        electricity_costs=[
-            {
-                "start": 0,
-                "end": 24,
-                "import": "agile",
-                "export": "agile",
-            },
-        ],
-        winter_agile_import=True,
-        grid_charge=True,
-        grid_discharge=True,
-        agile_charge=True,
-        battery=True,
-        solar=True,
-        color="blue",
+        color="tan",
+        verbose=True,
         saving_sessions_discharge=False,
-        verbose=False,
+        grid_charge_hours = [0,1,2,3,5,6,7,8,9,10,11,12,13,14,19,20,21,22,23]
     )
+    # simulate_tariff_and_store(
+    #     name="discharge flux",
+    #     balance=balance,
+    #     electricity_costs=SITE["tariffs"]["flux"]["kwh_costs"],
+    #     grid_charge=True,
+    #     grid_discharge=True,
+    #     battery=True,
+    #     solar=True,
+    #     color="teal",
+    #     verbose=True,
+    #     saving_sessions_discharge=False,
+    # )
+    # simulate_tariff_and_store(
+    #     name="agile incoming and fixed outgoing",
+    #     balance=balance,
+    #     electricity_costs=[
+    #         {
+    #             "start": 0,
+    #             "end": 24,
+    #             "import": "agile",
+    #             "export": 0.15,
+    #         },
+    #     ],
+    #     grid_charge=True,
+    #     grid_discharge=True,
+    #     agile_charge=True,
+    #     battery=True,
+    #     solar=True,
+    #     color="brown",
+    #     saving_sessions_discharge=True,
+    #     verbose=False,
+    # )
+    # simulate_tariff_and_store(
+    #     name="agile incoming and outgoing",
+    #     balance=balance,
+    #     electricity_costs=[
+    #         {
+    #             "start": 0,
+    #             "end": 24,
+    #             "import": "agile",
+    #             "export": "agile",
+    #         },
+    #     ],
+    #     winter_agile_import=True,
+    #     grid_charge=True,
+    #     grid_discharge=True,
+    #     agile_charge=True,
+    #     battery=True,
+    #     solar=True,
+    #     color="blue",
+    #     saving_sessions_discharge=False,
+    #     verbose=False,
+    # )
 
 
-    simulate_tariff_and_store(
-        name="flexible no solar no batteries",
-        balance=balance,
-        gas_hot_water=True,
-        verbose=False,
-        battery=False,
-        solar=False,
-    )
+    # simulate_tariff_and_store(
+    #     name="flexible no solar no batteries",
+    #     balance=balance,
+    #     gas_hot_water=True,
+    #     verbose=False,
+    #     battery=False,
+    #     solar=False,
+    # )
 
-    simulate_tariff_and_store(
-        name="flux",
-        balance=balance,
-        electricity_costs=SITE["tariffs"]["flux"]["kwh_costs"],
-        grid_charge=True,
-        battery=True,
-        solar=True,
-        color="green",
-        saving_sessions_discharge=True,
-    )
-    simulate_tariff_and_store(
-        name="winter agile",
-        balance=balance,
-        electricity_costs=SITE["tariffs"]["flux"]["kwh_costs"],
-        winter_agile_import=True,
-        grid_charge=True,
-        agile_charge=True,
-        battery=True,
-        solar=True,
-        color="pink",
-        saving_sessions_discharge=True,
-    )
+    # simulate_tariff_and_store(
+    #     name="flux",
+    #     balance=balance,
+    #     electricity_costs=SITE["tariffs"]["flux"]["kwh_costs"],
+    #     grid_charge=True,
+    #     battery=True,
+    #     solar=True,
+    #     color="green",
+    #     saving_sessions_discharge=True,
+    # )
+    # simulate_tariff_and_store(
+    #     name="winter agile",
+    #     balance=balance,
+    #     electricity_costs=SITE["tariffs"]["flux"]["kwh_costs"],
+    #     winter_agile_import=True,
+    #     grid_charge=True,
+    #     agile_charge=True,
+    #     battery=True,
+    #     solar=True,
+    #     color="pink",
+    #     saving_sessions_discharge=True,
+    # )
     return RUN_ARCHIVE
 RUN_ARCHIVE = memoize('simulations.pickle', run_simulations, max_age_days=0)
 
+title('final costs recap')
 plot_simulations(RUN_ARCHIVE)
+pprint.pprint(final_costs)
+
