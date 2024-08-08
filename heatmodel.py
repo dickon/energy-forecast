@@ -267,6 +267,7 @@ def update_data(attrname, old, new):
     #     ds.data = values
     for room in data['rooms']:
         ds_rooms[room].data = dict(x=df['time'], y=df[room],)
+        ds_rooms_details[room].data= dict(x=df['time'], y=power_errors_df.get(room, []), temperature = df['external'])
         print(f'room {room} mean temperature {df[room].mean()}')
     #print(power_errors_df.to_string())
     room_powers_ds.data = ColumnDataSource.from_df(room_powers_series)
@@ -297,6 +298,7 @@ height = Span(dimension="height", line_dash="dotted", line_width=2)
 room_powers_series, df, power_errors_df = calculate_data()
 room_colours = magma(len(data['rooms']))
 axs = []
+
 for i in range(3 + len(data['rooms'])):
     s = figure(height=300, width=800, x_axis_type='datetime', tools='hover,xwheel_zoom')
     s.add_tools(CrosshairTool(overlay=[width, height]))
@@ -311,7 +313,7 @@ axs[0].title = 'Heat input, watts'
 
 colours = {'external':'blue'}
 ds_rooms = {}
-
+ds_rooms_details = {}
 for i, room, col in zip(range(len(data['rooms'])), data['rooms'], room_colours):
     r = axs[1].line(x=df['time'], y=df[room], legend_label=room, line_width=2, color=colours.get(room, col), muted_alpha=0.2, alpha=0.9)
     ds_rooms[room] = r.data_source
@@ -322,6 +324,7 @@ for i, room, col in zip(range(len(data['rooms'])), data['rooms'], room_colours):
     #axs[i+3].extra_y_ranges = {"power":Range1d(start=-2000, end=2000)}
     #axs[i+3].line(x=df['time'], y=df[room], color='black')
     ds = ColumnDataSource(dict(x=df['time'], y=power_errors_df.get(room, []), temperature = df['external']))
+    ds_rooms_details[room] = ds
     colors = linear_cmap(field_name='temperature', palette='Spectral6', low=-5, high=30)
     axs[i+3].scatter(x='x', y='y',  color=colors, source=ds)
     #axs[i+3].add_layout(LinearAxis(y_range_name='power'), 'right')
