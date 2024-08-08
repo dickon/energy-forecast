@@ -104,6 +104,7 @@ with open('heatmodel.json', 'r') as f:
 def calculate_data():
     timestamps = []
     out_temperatures = []
+    power_errors = []
     temperatures = {}
     start_t = t = house_data.outside_temperatures[0].time.replace(second=0, minute=0, microsecond=0)
     end_t = start_t + timedelta(days=day_range_slider.value)
@@ -119,7 +120,6 @@ def calculate_data():
     
     #pprint.pprint(radiator_scales)
     cursor = 0
-    outv = []
     powers = []
     satisfactions = []
     system_power = power_slider.value
@@ -128,6 +128,7 @@ def calculate_data():
     while t < end_t:
         while house_data.outside_temperatures[cursor+1].time < t:
             cursor += 1
+        next_t = t + timedelta(hours=1)
         rec = house_data.outside_temperatures[cursor]
         temperatures['external'] = rec.temperature
         timestamps.append(t)
@@ -149,6 +150,7 @@ def calculate_data():
 
         weather_compensation_ratio = 1.0
         room_powers = {}
+        discrepanices = {}
         for phase in [0,1]:
             house_rad_output = 0
             for room_index, (room_name, room_data) in enumerate(data['rooms'].items()):
@@ -160,18 +162,6 @@ def calculate_data():
                     room_name_alias = 'Guest suite'
 
                 if real_temperatures_switch.active:
-                    if room_name_alias in house_data.room_temperatures:
-                        realtemp = house_data.room_temperatures[room_name_alias].get(t)
-                        if realtemp is not None:
-                            #print('real temp', realtemp, 'for',room_name, 'at', t)
-                            temperatures[room_name] = realtemp
-                        else:
-                            #print('temp missing for', room_name, 'at', t)
-                            #print('have', house_data.room_temperatures[room_name].keys())
-                            pass
-                    else:
-                        #print('room missing for', room_name)
-                        pass
                     if room_name_alias in house_data.room_setpoints:
                         realset = house_data.room_setpoints[room_name_alias].get(t)
                         if realset is not None:
@@ -217,8 +207,26 @@ def calculate_data():
                 if phase == 1:
                     room_powers_series[room_name].append(room_rad_output)
                     temp_change = room_tot_flow / (room_data['area']*300)
-
+                    orig_temp = temperatures[room_name]
                     temperatures[room_name] += temp_change
+                    if room_name_alias in house_data.room_temperatures:
+                        realtemp = house_data.room_temperatures[room_name_alias].get(next_t)
+                        if realtemp is not None:
+                            #print('real temp', realtemp, 'for',room_name, 'at', next_t, 'c/w caluclated', temperatures[room_name])
+                            actual_temp_change = realtemp - orig_temp
+                            actual_flow = actual_temp_change * (room_data['area']*300)
+                            #print('actual flow', actual_flow, 'calculated', room_tot_flow, 'for', room_name, 'at', next_t)
+                            discrepanices[room_name] = actual_flow - room_tot_flow
+                            temperatures[room_name] = realtemp
+                            
+                        else:
+                            #print('temp missing for', room_name, 'at', t)
+                            #print('have', house_data.room_temperatures[room_name].keys())
+                            pass
+                    else:
+                        #print('room missing for', room_name)
+                        pass
+
                     if verbose:
                         print(f'   Total room flow={room_tot_flow:.0f}W area {room_data['area']:.0f}qm^2 temperature +{temp_change}->{temperatures[room_name]}')
             if phase == 0:
@@ -236,9 +244,9 @@ def calculate_data():
                 if False:
                     print(f'{t} power {house_rad_output/1e3:.1f}kW (ideal:{ideal_power_out/1e3:.1f}kW) inside={temperatures['Downstairs study']:.1f}C outside={temperatures['external']:.1f}C power={house_rad_output} satisfaction={satisfaction*100:.0f}%')
 
-        t += timedelta(hours=1)
-        outv.append( temperatures['Downstairs study'])
+        t = next_t
         out_temperatures.append( dict(**temperatures))
+        power_errors.append(dict(**discrepanices))
         assert house_rad_output >= 0
         powers.append(house_rad_output)
     recs = { "time":timestamps, "output_power":powers, "input_power":input_power_series,  "satisfactions":satisfactions}
@@ -247,17 +255,18 @@ def calculate_data():
     for k in temperatures:
         recs[k] = [x[k] for x in out_temperatures] 
     df = pd.DataFrame(recs)
-    return room_powers_df, df
+    power_errors_df = pd.DataFrame(power_errors)
+    return room_powers_df, df, power_errors_df
 
 def update_data(attrname, old, new):
-    room_powers_series, df = calculate_data()
+    room_powers_series, df, power_errors_df = calculate_data()
 
     # for ds, values in zip(ds_power, room_powers_series):
     #     ds.data = values
     for room in data['rooms']:
         ds_rooms[room].data = dict(x=df['time'], y=df[room],)
         print(f'room {room} mean temperature {df[room].mean()}')
-    print(df.to_string())
+    print(power_errors_df.to_string())
     room_powers_ds.data = ColumnDataSource.from_df(room_powers_series)
     ds_outside.data = dict(x=df['time'], y=df['external'])
     subset = room_powers_series
@@ -283,7 +292,7 @@ real_temperatures_switch = Switch(active=True)
 weather_compensation_switch = Switch(active=False)
 width = Span(dimension="width", line_dash="dashed", line_width=2)
 height = Span(dimension="height", line_dash="dotted", line_width=2)
-room_powers_series, df= calculate_data()
+room_powers_series, df, power_errors_df = calculate_data()
 room_colours = magma(len(data['rooms']))
 axs = []
 for i in range(3):
