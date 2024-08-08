@@ -575,7 +575,7 @@ def get_daily_gas_use():
   """,
         "56new",
         tback,
-        t1,
+        tnow,
         """import "date" """,
     )
     res2 = do_query(
@@ -590,15 +590,28 @@ def get_daily_gas_use():
   |> yield(name: "sum")""",
         "56new",
         tback,
-        t1,
+        tnow,
     )
+    days = {}
+    for row in list(res) + list(res2):
+        dayt = row['_time'].strftime("%m-%d")
+        days.setdefault(dayt, [])
+        days[dayt].append( row['_value'])
     out = {}
     wh_series = []
     t_series = []
 
     date_series = []
     temp_series = []
-    for row in list(res) + list(res2):
+    day = t0
+    tempv = 15
+    while day < t1:
+        day = day + datetime.timedelta(days=1)
+        dayt = day.strftime('%m-%d')
+        if dayt in days:
+            wh = mean(days.get(dayt))
+        else:
+            wh = None
         temp = do_query(
             """
   |> filter(fn: (r) => r["_measurement"] == "sensor.openweathermap_condition" or r["_measurement"] == "weather.56_new_road")
@@ -609,18 +622,26 @@ def get_daily_gas_use():
   //|> map(fn: (r) => ({ r with _value: math.mMax(x:0.0, y:18.0 - r._value ) }))
   |> yield(name: "mean")""",
             "home-assistant",
-            row["_time"] - datetime.timedelta(hours=24),
-            row["_time"],
+            day- datetime.timedelta(hours=24),
+            day,
             extra='import "math"',
         )
-
-        if temp:
-            temp_series.append(temp[0]['_value'])
+        if len(temp) == 1:
+            tempv = temp[0]['_value']
+        if wh is None:
+            source = 'est'
+            if tempv < 18:
+                wh = 1000 * 10 * (18 -  tempv)
+            else:
+                wh = 0
         else:
-            temp_series.append(15.0)
-        t_series.append(row["_time"])
-        wh_series.append(max(0, row["_value"]))
-        out[row["_time"].strftime("%m-%d")] = row["_value"]
+            source = 'meter'
+        print('day', dayt, 'mean temp', tempv, 'kwh',source, wh)
+
+        t_series.append(day)
+        wh_series.append(wh)
+        temp_series.append(tempv)
+        out[dayt] = wh
 
     plt.figure(figsize=(12, 8))
     plt.scatter(t_series,wh_series, c=temp_series, cmap="coolwarm_r")
@@ -783,7 +804,7 @@ def simulate_tariff(
                 saving_sessions_discharge and not actual,
             )
             if hh == 0:
-                gas_kwh_day = gas_use.get(tmodel.strftime("m-%d"), 0) / 1000 + (
+                gas_kwh_day = gas_use.get(tmodel.strftime("%m-%d"), 0) / 1000 + (
                     10 if gas_hot_water_saving_active else 0
                 )
                 gas_cost = gas_sc_cost + gas_kwh_day * gas_kwh_cost
@@ -1497,92 +1518,92 @@ def run_simulations():
         saving_sessions_discharge=False,
         grid_charge_hours = [0,1,2,3,5,6,7,8,9,10,11,12,13,14,19,20,21,22,23]
     )
-    # simulate_tariff_and_store(
-    #     name="discharge flux",
-    #     balance=balance,
-    #     electricity_costs=SITE["tariffs"]["flux"]["kwh_costs"],
-    #     grid_charge=True,
-    #     grid_discharge=True,
-    #     battery=True,
-    #     solar=True,
-    #     color="teal",
-    #     verbose=True,
-    #     saving_sessions_discharge=False,
-    # )
-    # simulate_tariff_and_store(
-    #     name="agile incoming and fixed outgoing",
-    #     balance=balance,
-    #     electricity_costs=[
-    #         {
-    #             "start": 0,
-    #             "end": 24,
-    #             "import": "agile",
-    #             "export": 0.15,
-    #         },
-    #     ],
-    #     grid_charge=True,
-    #     grid_discharge=True,
-    #     agile_charge=True,
-    #     battery=True,
-    #     solar=True,
-    #     color="brown",
-    #     saving_sessions_discharge=True,
-    #     verbose=False,
-    # )
-    # simulate_tariff_and_store(
-    #     name="agile incoming and outgoing",
-    #     balance=balance,
-    #     electricity_costs=[
-    #         {
-    #             "start": 0,
-    #             "end": 24,
-    #             "import": "agile",
-    #             "export": "agile",
-    #         },
-    #     ],
-    #     winter_agile_import=True,
-    #     grid_charge=True,
-    #     grid_discharge=True,
-    #     agile_charge=True,
-    #     battery=True,
-    #     solar=True,
-    #     color="blue",
-    #     saving_sessions_discharge=False,
-    #     verbose=False,
-    # )
+    simulate_tariff_and_store(
+        name="discharge flux",
+        balance=balance,
+        electricity_costs=SITE["tariffs"]["flux"]["kwh_costs"],
+        grid_charge=True,
+        grid_discharge=True,
+        battery=True,
+        solar=True,
+        color="teal",
+        verbose=True,
+        saving_sessions_discharge=False,
+    )
+    simulate_tariff_and_store(
+        name="agile incoming and fixed outgoing",
+        balance=balance,
+        electricity_costs=[
+            {
+                "start": 0,
+                "end": 24,
+                "import": "agile",
+                "export": 0.15,
+            },
+        ],
+        grid_charge=True,
+        grid_discharge=True,
+        agile_charge=True,
+        battery=True,
+        solar=True,
+        color="brown",
+        saving_sessions_discharge=True,
+        verbose=False,
+    )
+    simulate_tariff_and_store(
+        name="agile incoming and outgoing",
+        balance=balance,
+        electricity_costs=[
+            {
+                "start": 0,
+                "end": 24,
+                "import": "agile",
+                "export": "agile",
+            },
+        ],
+        winter_agile_import=True,
+        grid_charge=True,
+        grid_discharge=True,
+        agile_charge=True,
+        battery=True,
+        solar=True,
+        color="blue",
+        saving_sessions_discharge=False,
+        verbose=False,
+    )
 
 
-    # simulate_tariff_and_store(
-    #     name="flexible no solar no batteries",
-    #     balance=balance,
-    #     gas_hot_water=True,
-    #     verbose=False,
-    #     battery=False,
-    #     solar=False,
-    # )
+    simulate_tariff_and_store(
+        name="flexible no solar no batteries",
+        balance=balance,
+        gas_hot_water=True,
+        verbose=False,
+        battery=False,
+        solar=False,
+    )
 
-    # simulate_tariff_and_store(
-    #     name="flux",
-    #     balance=balance,
-    #     electricity_costs=SITE["tariffs"]["flux"]["kwh_costs"],
-    #     grid_charge=True,
-    #     battery=True,
-    #     solar=True,
-    #     color="green",
-    #     saving_sessions_discharge=True,
-    # )
-    # simulate_tariff_and_store(
-    #     name="winter agile",
-    #     balance=balance,
-    #     electricity_costs=SITE["tariffs"]["flux"]["kwh_costs"],
-    #     winter_agile_import=True,
-    #     grid_charge=True,
-    #     agile_charge=True,
-    #     battery=True,
-    #     solar=True,
-    #     color="pink",
-    #     saving_sessions_discharge=True,
-    # )
+    simulate_tariff_and_store(
+        name="flux",
+        balance=balance,
+        electricity_costs=SITE["tariffs"]["flux"]["kwh_costs"],
+        grid_charge=True,
+        battery=True,
+        solar=True,
+        color="green",
+        saving_sessions_discharge=True,
+    )
+    simulate_tariff_and_store(
+        name="winter agile",
+        balance=balance,
+        electricity_costs=SITE["tariffs"]["flux"]["kwh_costs"],
+        winter_agile_import=True,
+        grid_charge=True,
+        agile_charge=True,
+        battery=True,
+        solar=True,
+        color="pink",
+        saving_sessions_discharge=True,
+    )
     return RUN_ARCHIVE
 RUN_ARCHIVE = memoize('simulations.pickle', run_simulations, max_age_days=0)
 
