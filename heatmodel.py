@@ -46,7 +46,7 @@ write_api = client.write_api(write_options=SYNCHRONOUS)
 query_api = client.query_api()
 
 def fetch_house_data() -> HouseData:
-    start = isoparse("2023-01-01T00:00:00Z")
+    start = isoparse("2023-08-01T00:00:00Z")
     temps = []
     for col in query_api.query(f"""
 from(bucket: "home-assistant")
@@ -115,7 +115,7 @@ def calculate_data():
         scale = max(minimum_rad_density_slider.value, rad_density) / rad_density
         radiator_scales[room_name] = scale
         total_base_rad_power += base_rad_power
-    print('Total base radiator power', total_base_rad_power)
+    print(f'Total base radiator {total_base_rad_power/1e3}kW')
     
     #pprint.pprint(radiator_scales)
     cursor = 0
@@ -124,6 +124,7 @@ def calculate_data():
     satisfactions = []
     system_power = power_slider.value
     room_powers_series = {k: [] for k in data['rooms'].keys()}
+    input_power_series = []
     while t < end_t:
         while house_data.outside_temperatures[cursor+1].time < t:
             cursor += 1
@@ -137,6 +138,15 @@ def calculate_data():
                 print('outside', temperatures['external'], 'so using weather compensation flow temperature', flow_t)
         else:
             flow_t = flow_temperature_slider.value
+        return_t = flow_t - 20.0
+        if return_t < 27: efficiency = 0.97
+        elif return_t < 32: efficiency = 0.96
+        elif return_t < 40: efficiency = 0.95
+        elif return_t < 45: efficiency = 0.93
+        elif return_t < 50: efficiency = 0.92
+        elif return_t < 55: efficiency = 0.87
+        else: efficiency = 0.86
+
         weather_compensation_ratio = 1.0
         room_powers = {}
         for phase in [0,1]:
@@ -196,7 +206,7 @@ def calculate_data():
                     room_tot_flow += flow
                 room_rad_output = 0
                 for rad in room_data['radiators']:
-                    temperatures.setdefault(room_name, 10)
+                    temperatures.setdefault(room_name, 21)
                     rad_delta_t = max(0, flow_t - temperatures[room_name])
                     rad_power = (rad['heat50k'] *radiator_scales[room_name] * rad_delta_t / 50 if temperatures[room_name] < target_t else 0) * satisfaction 
                     if verbose:
@@ -221,15 +231,17 @@ def calculate_data():
                 else:
                     satisfaction =  system_power / ideal_power_out
                 satisfactions.append(satisfaction)
-            if phase == 1 and False:
-                print(f'{t} power {house_rad_output/1e3:.1f}kW (ideal:{ideal_power_out/1e3:.1f}kW) inside={temperatures['Downstairs study']:.1f}C outside={temperatures['external']:.1f}C power={house_rad_output} satisfaction={satisfaction*100:.0f}%')
+            if phase == 1:
+                input_power_series.append ( house_rad_output / efficiency)
+                if False:
+                    print(f'{t} power {house_rad_output/1e3:.1f}kW (ideal:{ideal_power_out/1e3:.1f}kW) inside={temperatures['Downstairs study']:.1f}C outside={temperatures['external']:.1f}C power={house_rad_output} satisfaction={satisfaction*100:.0f}%')
 
         t += timedelta(hours=1)
         outv.append( temperatures['Downstairs study'])
         out_temperatures.append( dict(**temperatures))
         assert house_rad_output >= 0
         powers.append(house_rad_output)
-    recs = { "time":timestamps, "power":powers,  "satisfactions":satisfactions}
+    recs = { "time":timestamps, "output_power":powers, "input_power":input_power_series,  "satisfactions":satisfactions}
 
     room_powers_df = pd.DataFrame( room_powers_series, index=timestamps )
     for k in temperatures:
@@ -245,6 +257,7 @@ def update_data(attrname, old, new):
     for room in data['rooms']:
         ds_rooms[room].data = dict(x=df['time'], y=df[room],)
         print(f'room {room} mean temperature {df[room].mean()}')
+    print(df.to_string())
     room_powers_ds.data = ColumnDataSource.from_df(room_powers_series)
     ds_outside.data = dict(x=df['time'], y=df['external'])
     subset = room_powers_series
@@ -254,22 +267,23 @@ def update_data(attrname, old, new):
     print('100% percentile power', subsetsum.quantile(1.0))
     index_seconds = room_powers_series.index.astype(np.int64) // 1e9
     #print(index_seconds.head())
-    ej =  scipy.integrate.trapezoid(subset.sum(axis=1), index_seconds)
-    kwh = ej /3.6e6
-    print(f'total energy {ej} kwh {kwh:.1f}')
 
-power_slider =Slider(title='Heat source power', start=2000, end=40000, value=10000)
+    kwh_output =  scipy.integrate.trapezoid(subset.sum(axis=1), index_seconds) / 3.6e6
+    kwh_input =  scipy.integrate.trapezoid(df['input_power'], index_seconds) / 3.6e6
+    print(f'total energy kwh output {kwh_output:.1f} input {kwh_input:.1f} efficency {100.0*kwh_output/ kwh_input:.0f}%')
+
+power_slider =Slider(title='Heat source power', start=2000, end=40000, value=40000)
 flow_temperature_slider = Slider(title='Flow temperature (C)', start=25, end=65, value=50)
 day_range_slider = Slider(title='Days to model', start=10, end=365, value=365)
 minimum_rad_density_slider = Slider(title='Minimum rad density', start=30, end=1000, value=5)
 weather_compensation_ratio_slider = Slider(title='Weather compensation ratio', start=0.1, end=1.5, value=0.6, step=0.05)
 night_set_back_slider = Slider(title="night set back", start=0, end=15, value=0)
 sliders = [power_slider, flow_temperature_slider, day_range_slider, minimum_rad_density_slider, weather_compensation_ratio_slider, night_set_back_slider]
-real_temperatures_switch = Switch(active=False)
+real_temperatures_switch = Switch(active=True)
 weather_compensation_switch = Switch(active=False)
 width = Span(dimension="width", line_dash="dashed", line_width=2)
 height = Span(dimension="height", line_dash="dotted", line_width=2)
-room_powers_series, df = calculate_data()
+room_powers_series, df= calculate_data()
 room_colours = magma(len(data['rooms']))
 axs = []
 for i in range(3):
