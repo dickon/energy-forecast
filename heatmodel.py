@@ -12,6 +12,8 @@ from bokeh.models import Slider, Switch, Div, CrosshairTool, Span, HoverTool, Co
 from bokeh.io import curdoc
 from structures import HouseData, TemperaturePoint
 from bokeh.palettes import magma
+import scipy.integrate
+
 
 LOCATION_TRANSFORMATION = {
       'guest_suite': 'Downstairs Guest suite',
@@ -241,7 +243,14 @@ def update_data(attrname, old, new):
         ds_rooms[room].data = dict(x=df['time'], y=df[room],)
     room_powers_ds.data = ColumnDataSource.from_df(room_powers_series)
     ds_outside.data = dict(x=df['time'], y=df['external'])
-
+    subset = df.iloc[:, 4:]
+    #print(subset)
+    #print(df['time'])
+    index_seconds = df['time'].astype(np.int64) // 1e9
+    #print(index_seconds.head())
+    ej =  scipy.integrate.trapezoid(subset.sum(axis=1), index_seconds)
+    kwh = ej /3.6e6
+    print(f'total energy {ej} kwh {kwh:.1f}')
 
 power_slider =Slider(title='Heat source power', start=2000, end=40000, value=30000)
 flow_temperature_slider = Slider(title='Flow temperature (C)', start=25, end=65, value=60)

@@ -2,3 +2,4 @@ python-dateutil==2.9.0
 influxdb_client
 numpy
 bokeh
+scipy
