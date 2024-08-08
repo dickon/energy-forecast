@@ -46,7 +46,7 @@ write_api = client.write_api(write_options=SYNCHRONOUS)
 query_api = client.query_api()
 
 def fetch_house_data() -> HouseData:
-    start = isoparse("2023-08-10T00:00:00Z")
+    start = isoparse("2023-01-01T00:00:00Z")
     temps = []
     for col in query_api.query(f"""
 from(bucket: "home-assistant")
@@ -108,11 +108,15 @@ def calculate_data():
     start_t = t = house_data.outside_temperatures[0].time.replace(second=0, minute=0, microsecond=0)
     end_t = start_t + timedelta(days=day_range_slider.value)
     radiator_scales = {}
+    total_base_rad_power = 0
     for room_name, room_data in data['rooms'].items():
         base_rad_power = sum([rad['heat50k'] for rad in room_data['radiators']])
         rad_density = max(100, base_rad_power) / room_data['area']
         scale = max(minimum_rad_density_slider.value, rad_density) / rad_density
         radiator_scales[room_name] = scale
+        total_base_rad_power += base_rad_power
+    print('Total base radiator power', total_base_rad_power)
+    
     #pprint.pprint(radiator_scales)
     cursor = 0
     outv = []
@@ -231,7 +235,6 @@ def calculate_data():
     for k in temperatures:
         recs[k] = [x[k] for x in out_temperatures] 
     df = pd.DataFrame(recs)
-    print(df)
     return room_powers_df, df
 
 def update_data(attrname, old, new):
@@ -241,25 +244,28 @@ def update_data(attrname, old, new):
     #     ds.data = values
     for room in data['rooms']:
         ds_rooms[room].data = dict(x=df['time'], y=df[room],)
+        print(f'room {room} mean temperature {df[room].mean()}')
     room_powers_ds.data = ColumnDataSource.from_df(room_powers_series)
     ds_outside.data = dict(x=df['time'], y=df['external'])
-    subset = df.iloc[:, 4:]
-    #print(subset)
-    #print(df['time'])
-    index_seconds = df['time'].astype(np.int64) // 1e9
+    subset = room_powers_series
+    subsetsum = subset.sum(axis=1)
+    print('50% percentile power', subsetsum.quantile(0.5))
+    print('90% percentile power', subsetsum.quantile(0.9))
+    print('100% percentile power', subsetsum.quantile(1.0))
+    index_seconds = room_powers_series.index.astype(np.int64) // 1e9
     #print(index_seconds.head())
     ej =  scipy.integrate.trapezoid(subset.sum(axis=1), index_seconds)
     kwh = ej /3.6e6
     print(f'total energy {ej} kwh {kwh:.1f}')
 
-power_slider =Slider(title='Heat source power', start=2000, end=40000, value=30000)
-flow_temperature_slider = Slider(title='Flow temperature (C)', start=25, end=65, value=60)
-day_range_slider = Slider(title='Days to model', start=10, end=365, value=30)
+power_slider =Slider(title='Heat source power', start=2000, end=40000, value=10000)
+flow_temperature_slider = Slider(title='Flow temperature (C)', start=25, end=65, value=50)
+day_range_slider = Slider(title='Days to model', start=10, end=365, value=365)
 minimum_rad_density_slider = Slider(title='Minimum rad density', start=30, end=1000, value=5)
 weather_compensation_ratio_slider = Slider(title='Weather compensation ratio', start=0.1, end=1.5, value=0.6, step=0.05)
-night_set_back_slider = Slider(title="night set back", start=0, end=15, value=10)
+night_set_back_slider = Slider(title="night set back", start=0, end=15, value=0)
 sliders = [power_slider, flow_temperature_slider, day_range_slider, minimum_rad_density_slider, weather_compensation_ratio_slider, night_set_back_slider]
-real_temperatures_switch = Switch(active=True)
+real_temperatures_switch = Switch(active=False)
 weather_compensation_switch = Switch(active=False)
 width = Span(dimension="width", line_dash="dashed", line_width=2)
 height = Span(dimension="height", line_dash="dotted", line_width=2)
@@ -276,7 +282,7 @@ for i in range(3):
 print(room_powers_series)
 room_powers_ds = ColumnDataSource(room_powers_series)
 axs[0].varea_stack(stackers=data['rooms'].keys(), x= 'index', source=room_powers_ds, color=room_colours)
-axs[0].legend.location = 'bottom_right'
+#axs[0].legend.location = 'bottom_right'
 axs[0].legend.background_fill_alpha = 0.5
 
 
