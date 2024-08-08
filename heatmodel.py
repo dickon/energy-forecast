@@ -8,13 +8,13 @@ import numpy as np
 import pandas as pd
 from bokeh.layouts import column, row
 from bokeh.plotting import figure, show
-from bokeh.models import Slider, Switch, Div, CrosshairTool, Span, HoverTool, ColumnDataSource, Range1d, LinearAxis
+from bokeh.models import Slider, Switch, Div, CrosshairTool, Span, HoverTool, ColumnDataSource, Range1d, LinearAxis,  DateRangeSlider
 from bokeh.io import curdoc
 from structures import HouseData, TemperaturePoint
-from bokeh.palettes import magma
+from bokeh.palettes import Category20, magma, plasma
 from bokeh.transform import linear_cmap
 import scipy.integrate
-
+import pytz
 
 LOCATION_TRANSFORMATION = {
       'guest_suite': 'Downstairs Guest suite',
@@ -107,8 +107,9 @@ def calculate_data():
     out_temperatures = []
     power_errors = []
     temperatures = {}
-    start_t = t = house_data.outside_temperatures[0].time.replace(second=0, minute=0, microsecond=0)
-    end_t = start_t + timedelta(days=day_range_slider.value)
+    start_t = t = pytz.utc.localize(datetime.fromtimestamp(day_range_slider.value[0]/1000))
+    end_t = pytz.utc.localize(datetime.fromtimestamp(day_range_slider.value[-1]/1000))
+    print('start', start_t, "end", end_t)
     radiator_scales = {}
     total_base_rad_power = 0
     for room_name, room_data in data['rooms'].items():
@@ -127,7 +128,7 @@ def calculate_data():
     room_powers_series = {k: [] for k in data['rooms'].keys()}
     input_power_series = []
     while t < end_t:
-        while house_data.outside_temperatures[cursor+1].time < t:
+        while cursor+ 1< len(house_data.outside_temperatures) and house_data.outside_temperatures[cursor+1].time < t:
             cursor += 1
         next_t = t + timedelta(hours=1)
         rec = house_data.outside_temperatures[cursor]
@@ -260,7 +261,7 @@ def calculate_data():
     power_errors_df = pd.DataFrame(power_errors)
     return room_powers_df, df, power_errors_df
 
-def update_data(attrname, old, new):
+def update_data(attr, old, new):
     room_powers_series, df, power_errors_df = calculate_data()
 
     # for ds, values in zip(ds_power, room_powers_series):
@@ -286,17 +287,21 @@ def update_data(attrname, old, new):
 
 power_slider =Slider(title='Heat source power', start=2000, end=40000, value=40000)
 flow_temperature_slider = Slider(title='Flow temperature (C)', start=25, end=65, value=50)
-day_range_slider = Slider(title='Days to model', start=10, end=365, value=365)
+t0 = isoparse("2023-08-01T00:00:00Z")
+t1 = datetime.now()
+t0p = isoparse("2024-02-01T00:00:00Z")
+t1p = isoparse("2024-02-03T23:59:00Z")
+day_range_slider = DateRangeSlider(width=800, start=t0, end=t1, value=(t0p,t1p))
 minimum_rad_density_slider = Slider(title='Minimum rad density', start=30, end=1000, value=5)
 weather_compensation_ratio_slider = Slider(title='Weather compensation ratio', start=0.1, end=1.5, value=0.6, step=0.05)
 night_set_back_slider = Slider(title="night set back", start=0, end=15, value=0)
-sliders = [power_slider, flow_temperature_slider, day_range_slider, minimum_rad_density_slider, weather_compensation_ratio_slider, night_set_back_slider]
+sliders = [ day_range_slider, power_slider, flow_temperature_slider, minimum_rad_density_slider, weather_compensation_ratio_slider, night_set_back_slider]
 real_temperatures_switch = Switch(active=True)
 weather_compensation_switch = Switch(active=False)
 width = Span(dimension="width", line_dash="dashed", line_width=2)
 height = Span(dimension="height", line_dash="dotted", line_width=2)
 room_powers_series, df, power_errors_df = calculate_data()
-room_colours = magma(len(data['rooms']))
+room_colours = plasma(len(data['rooms']))
 axs = []
 
 for i in range(3 + len(data['rooms'])):
@@ -315,17 +320,15 @@ colours = {'external':'blue'}
 ds_rooms = {}
 ds_rooms_details = {}
 for i, room, col in zip(range(len(data['rooms'])), data['rooms'], room_colours):
-    r = axs[1].line(x=df['time'], y=df[room], legend_label=room, line_width=2, color=colours.get(room, col), muted_alpha=0.2, alpha=0.9)
+    r = axs[1].line(x=df['time'], y=df[room], legend_label=room, line_width=2, color=colours.get(room, col))
     ds_rooms[room] = r.data_source
-    if room != 'Lounge':
-        r.muted = True
     axs[i+3].title = f'{room} details'
     #axs[i+3].y_range = Range1d(10, 25)
     #axs[i+3].extra_y_ranges = {"power":Range1d(start=-2000, end=2000)}
     #axs[i+3].line(x=df['time'], y=df[room], color='black')
     ds = ColumnDataSource(dict(x=df['time'], y=power_errors_df.get(room, []), temperature = df['external']))
     ds_rooms_details[room] = ds
-    colors = linear_cmap(field_name='temperature', palette='Spectral6', low=-5, high=30)
+    colors = linear_cmap(field_name='temperature', palette='Viridis256', low=-5, high=30)
     axs[i+3].scatter(x='x', y='y',  color=colors, source=ds)
     #axs[i+3].add_layout(LinearAxis(y_range_name='power'), 'right')
 axs[0].yaxis.axis_label = "Watts"
@@ -340,6 +343,8 @@ axs[2].yaxis.axis_label = 'Celsius'
 ds_outside = axs[2].line(x=[],y=[]).data_source
 
 curdoc().add_root(column(row(*sliders[:4]), row(Div(text='Use historical temperatures'), real_temperatures_switch, Div(text='Weather compensation'), weather_compensation_switch, *sliders[4:]), *axs))
+#curdoc().add_periodic_callback(update_data, 10)
+
 update_data(None, None, None)
 for slider in sliders:
     slider.on_change('value', update_data)
