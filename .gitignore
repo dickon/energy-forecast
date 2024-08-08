@@ -15,3 +15,4 @@ forcecast.log
 dailysolar2.png
 forecast.log
 *.pickle
+venv/**
