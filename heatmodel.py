@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from bokeh.layouts import column, row
 from bokeh.plotting import figure, show
-from bokeh.models import Slider, Switch, Div, CrosshairTool, Span, HoverTool, ColumnDataSource
+from bokeh.models import Slider, Switch, Div, CrosshairTool, Span, HoverTool, ColumnDataSource, Range1d, LinearAxis
 from bokeh.io import curdoc
 from structures import HouseData, TemperaturePoint
 from bokeh.palettes import magma
@@ -37,15 +37,15 @@ class InfluxConfig(NamedTuple):
 
 
 site = json.load(open(os.path.expanduser("~/site.json")))
-influxConfig = InfluxConfig(**site["influx"])
-client = influxdb_client.InfluxDBClient(
-    url=influxConfig.server, token=influxConfig.token, org=influxConfig.org
-)
-
-write_api = client.write_api(write_options=SYNCHRONOUS)
-query_api = client.query_api()
-
 def fetch_house_data() -> HouseData:
+    influxConfig = InfluxConfig(**site["influx"])
+    client = influxdb_client.InfluxDBClient(
+        url=influxConfig.server, token=influxConfig.token, org=influxConfig.org
+    )
+
+    write_api = client.write_api(write_options=SYNCHRONOUS)
+    query_api = client.query_api()
+
     start = isoparse("2023-08-01T00:00:00Z")
     temps = []
     for col in query_api.query(f"""
@@ -216,7 +216,8 @@ def calculate_data():
                             actual_temp_change = realtemp - orig_temp
                             actual_flow = actual_temp_change * (room_data['area']*300)
                             #print('actual flow', actual_flow, 'calculated', room_tot_flow, 'for', room_name, 'at', next_t)
-                            discrepanices[room_name] = actual_flow - room_tot_flow
+                            delta = actual_flow - room_tot_flow
+                            discrepanices[room_name] = delta
                             temperatures[room_name] = realtemp
                             
                         else:
@@ -266,7 +267,7 @@ def update_data(attrname, old, new):
     for room in data['rooms']:
         ds_rooms[room].data = dict(x=df['time'], y=df[room],)
         print(f'room {room} mean temperature {df[room].mean()}')
-    print(power_errors_df.to_string())
+    #print(power_errors_df.to_string())
     room_powers_ds.data = ColumnDataSource.from_df(room_powers_series)
     ds_outside.data = dict(x=df['time'], y=df['external'])
     subset = room_powers_series
@@ -295,32 +296,31 @@ height = Span(dimension="height", line_dash="dotted", line_width=2)
 room_powers_series, df, power_errors_df = calculate_data()
 room_colours = magma(len(data['rooms']))
 axs = []
-for i in range(3):
-    #h = HoverTool(  )
+for i in range(3 + len(data['rooms'])):
     s = figure(height=300, width=800, x_axis_type='datetime', tools='hover,xwheel_zoom')
     s.add_tools(CrosshairTool(overlay=[width, height]))
     s.sizing_mode = 'scale_width'
     axs.append(s)
 
-print(room_powers_series)
 room_powers_ds = ColumnDataSource(room_powers_series)
 axs[0].varea_stack(stackers=data['rooms'].keys(), x= 'index', source=room_powers_ds, color=room_colours)
 #axs[0].legend.location = 'bottom_right'
 axs[0].legend.background_fill_alpha = 0.5
-
-
-#ds_power = [x.data_source for x in power_stack]
-#axs[0].varea_stack(stackers=room_powers_series)
 axs[0].title = 'Heat input, watts'
 
 colours = {'external':'blue'}
 ds_rooms = {}
-for room, col in zip(data['rooms'], room_colours):
-
+for i, room, col in zip(range(len(data['rooms'])), data['rooms'], room_colours):
     r = axs[1].line(x=df['time'], y=df[room], legend_label=room, line_width=2, color=colours.get(room, col), muted_alpha=0.2, alpha=0.9)
     ds_rooms[room] = r.data_source
     if room != 'Lounge':
         r.muted = True
+    axs[i+3].title = f'{room} details'
+    #axs[i+3].y_range = Range1d(10, 25)
+    #axs[i+3].extra_y_ranges = {"power":Range1d(start=-2000, end=2000)}
+    #axs[i+3].line(x=df['time'], y=df[room], color='black')
+    axs[i+3].scatter(x=df['time'], y=power_errors_df.get(room, []))#, y_range_name='power')
+    #axs[i+3].add_layout(LinearAxis(y_range_name='power'), 'right')
 axs[0].yaxis.axis_label = "Watts"
 axs[1].legend.location = 'bottom_right'
 axs[1].legend.background_fill_alpha = 0.5
@@ -329,9 +329,10 @@ axs[1].title = 'Room temperatures'
 axs[1].legend.click_policy = 'mute'
 axs[2].title = 'Outside temperature'
 axs[2].yaxis.axis_label = 'Celsius'
+
 ds_outside = axs[2].line(x=[],y=[]).data_source
 
-curdoc().add_root(column(row(*sliders[:4]), row(Div(text='Use historical real temperatures'), real_temperatures_switch, Div(text='Weather compensation'), weather_compensation_switch, *sliders[4:]), axs[0], axs[1], axs[2]))
+curdoc().add_root(column(row(*sliders[:4]), row(Div(text='Use historical temperatures'), real_temperatures_switch, Div(text='Weather compensation'), weather_compensation_switch, *sliders[4:]), *axs))
 update_data(None, None, None)
 for slider in sliders:
     slider.on_change('value', update_data)
