@@ -16,6 +16,8 @@ from bokeh.transform import linear_cmap
 import scipy.integrate
 import pytz
 
+interval_minutes = 10
+
 LOCATION_TRANSFORMATION = {
       'guest_suite': 'Downstairs Guest suite',
       'box': 'Box',
@@ -68,7 +70,7 @@ from(bucket: "56new")
   |> range(start:{start.strftime('%Y-%m-%dT%H:%M:%SZ')}, stop: {(start+timedelta(days=365)).strftime('%Y-%m-%dT%H:%M:%SZ')})
   |> filter(fn: (r) => r["_measurement"] == "temperature" or r["_measurement"] == "temperature_direct")
   |> filter(fn: (r) => r["_field"] == "temperature" or r["_field"] == "setpoint")
-  |> aggregateWindow(every: 1h, fn: mean, createEmpty: false)
+  |> aggregateWindow(every: {interval_minutes}m, fn: mean, createEmpty: false)
   |> yield(name: "mean")
         """):
         for row in col:
@@ -130,7 +132,7 @@ def calculate_data():
     while t < end_t:
         while cursor+ 1< len(house_data.outside_temperatures) and house_data.outside_temperatures[cursor+1].time < t:
             cursor += 1
-        next_t = t + timedelta(hours=1)
+        next_t = t + timedelta(minutes=interval_minutes)
         rec = house_data.outside_temperatures[cursor]
         temperatures['external'] = rec.temperature
         timestamps.append(t)
@@ -193,7 +195,7 @@ def calculate_data():
                     other_temperature = temperatures.get(target)
                     room_temperature = temperatures.get(room_name)
                     delta_t =  other_temperature - room_temperature
-                    flow = delta_t * elem_rec['wk']
+                    flow = delta_t * elem_rec['wk'] * interval_minutes / 60
                     #print(f'  {elem_rec["width"]:.02f}*{elem_rec["height"]:.02f} {elem_rec["type"]} WK={elem_rec["wk"]:.1f} to {elem["boundary"]}@{other_temperature}dT{delta_t} {flow:.0f}W')
                     room_tot_flow += flow
                 room_rad_output = 0
@@ -208,11 +210,11 @@ def calculate_data():
                 house_rad_output += room_rad_output
                 if phase == 1:
                     room_powers_series[room_name].append(room_rad_output)
-                    temp_change = room_tot_flow / (room_data['area']*300)
+                    temp_change = interval_minutes *room_tot_flow / (room_data['area']*300) / 60
                     orig_temp = temperatures[room_name]
                     temperatures[room_name] += temp_change
                     if room_name_alias in house_data.room_temperatures:
-                        realtemp = house_data.room_temperatures[room_name_alias].get(next_t)
+                        realtemp = house_data.room_temperatures[room_name_alias].get(t)
                         if realtemp is not None:
                             #print('real temp', realtemp, 'for',room_name, 'at', next_t, 'c/w caluclated', temperatures[room_name])
                             actual_temp_change = realtemp - orig_temp
@@ -262,6 +264,9 @@ def calculate_data():
     return room_powers_df, df, power_errors_df
 
 def update_data(attr, old, new):
+    do_callback()
+
+def do_update():
     room_powers_series, df, power_errors_df = calculate_data()
 
     # for ds, values in zip(ds_power, room_powers_series):
@@ -344,8 +349,14 @@ ds_outside = axs[2].line(x=[],y=[]).data_source
 
 curdoc().add_root(column(row(*sliders[:4]), row(Div(text='Use historical temperatures'), real_temperatures_switch, Div(text='Weather compensation'), weather_compensation_switch, *sliders[4:]), *axs))
 #curdoc().add_periodic_callback(update_data, 10)
+idle_callbacks = []
 
-update_data(None, None, None)
+def do_callback():
+    while idle_callbacks:
+        curdoc().remove_timeout_callback(idle_callbacks.pop())
+    idle_callbacks.append( curdoc().add_timeout_callback(do_update, 2000))
+
+do_callback()
 for slider in sliders:
     slider.on_change('value', update_data)
 for switch in [weather_compensation_switch, real_temperatures_switch]:
