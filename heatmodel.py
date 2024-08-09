@@ -6,9 +6,9 @@ import influxdb_client, time
 from influxdb_client.client.write_api import SYNCHRONOUS
 import numpy as np
 import pandas as pd
-from bokeh.layouts import column, row
+from bokeh.layouts import column, row, gridplot
 from bokeh.plotting import figure, show
-from bokeh.models import Slider, Switch, Div, CrosshairTool, Span, HoverTool, ColumnDataSource, Range1d, LinearAxis,  DateRangeSlider
+from bokeh.models import Slider, Switch, Div, CrosshairTool, Span, HoverTool, ColumnDataSource, Range1d, LinearAxis,  DateRangeSlider, RadioGroup
 from bokeh.io import curdoc
 from structures import HouseData, TemperaturePoint
 from bokeh.palettes import Category20, magma, plasma
@@ -271,15 +271,16 @@ def do_update():
 
     # for ds, values in zip(ds_power, room_powers_series):
     #     ds.data = values
-    for room in data['rooms']:
-        ds_rooms[room].data = dict(x=df['time'], y=df[room],)
-        ds_rooms_details[room].data= dict(x=df['time'], y=power_errors_df.get(room, []), temperature = df['external'])
-        print(f'room {room} mean temperature {df[room].mean()}')
+    room = list(data['rooms'].keys())[room_select.active]
+    room_temp_ds.data = dict(x=df['time'], y=df[room],)
+    room_details_ds.data= dict(x=df['time'], y=power_errors_df.get(room, []), temperature = df['external'])
     #print(power_errors_df.to_string())
     room_powers_ds.data = ColumnDataSource.from_df(room_powers_series)
     ds_outside.data = dict(x=df['time'], y=df['external'])
     subset = room_powers_series
     subsetsum = subset.sum(axis=1)
+    axs[1].title.text = f'{room} temperature'
+    axs[3].title.text = f'{room} power discrepanices'
     print('50% percentile power', subsetsum.quantile(0.5))
     print('90% percentile power', subsetsum.quantile(0.9))
     print('100% percentile power', subsetsum.quantile(1.0))
@@ -290,6 +291,7 @@ def do_update():
     kwh_input =  scipy.integrate.trapezoid(df['input_power'], index_seconds) / 3.6e6
     print(f'total energy kwh output {kwh_output:.1f} input {kwh_input:.1f} efficency {100.0*kwh_output/ kwh_input:.0f}%')
 
+room_select = RadioGroup(labels=[str(x) for x in data['rooms'].keys()], active=0, inline=True)
 power_slider =Slider(title='Heat source power', start=2000, end=40000, value=40000)
 flow_temperature_slider = Slider(title='Flow temperature (C)', start=25, end=65, value=50)
 t0 = isoparse("2023-08-01T00:00:00Z")
@@ -309,8 +311,8 @@ room_powers_series, df, power_errors_df = calculate_data()
 room_colours = plasma(len(data['rooms']))
 axs = []
 
-for i in range(3 + len(data['rooms'])):
-    s = figure(height=300, width=800, x_axis_type='datetime', tools='hover,xwheel_zoom')
+for i in range(4):
+    s = figure(height=200, width=800, x_axis_type='datetime', tools='hover,xwheel_zoom')
     s.add_tools(CrosshairTool(overlay=[width, height]))
     s.sizing_mode = 'scale_width'
     axs.append(s)
@@ -322,41 +324,55 @@ axs[0].legend.background_fill_alpha = 0.5
 axs[0].title = 'Heat input, watts'
 
 colours = {'external':'blue'}
-ds_rooms = {}
-ds_rooms_details = {}
-for i, room, col in zip(range(len(data['rooms'])), data['rooms'], room_colours):
-    r = axs[1].line(x=df['time'], y=df[room], legend_label=room, line_width=2, color=colours.get(room, col))
-    ds_rooms[room] = r.data_source
-    axs[i+3].title = f'{room} details'
-    #axs[i+3].y_range = Range1d(10, 25)
-    #axs[i+3].extra_y_ranges = {"power":Range1d(start=-2000, end=2000)}
-    #axs[i+3].line(x=df['time'], y=df[room], color='black')
-    ds = ColumnDataSource(dict(x=df['time'], y=power_errors_df.get(room, []), temperature = df['external']))
-    ds_rooms_details[room] = ds
-    colors = linear_cmap(field_name='temperature', palette='Viridis256', low=-5, high=30)
-    axs[i+3].scatter(x='x', y='y',  color=colors, source=ds)
-    #axs[i+3].add_layout(LinearAxis(y_range_name='power'), 'right')
+room = list(data['rooms'].keys())[room_select.active]
+print('room', room)
+col = room_colours[room_select.active]
+r = axs[1].line(x=df['time'], y=df[room], legend_label=room, line_width=2, color=colours.get(room, col))
+room_temp_ds = r.data_source
+axs[3].title = f'{room} power discrepanices'
+#axs[i+3].y_range = Range1d(10, 25)
+#axs[i+3].extra_y_ranges = {"power":Range1d(start=-2000, end=2000)}
+#axs[i+3].line(x=df['time'], y=df[room], color='black')
+room_details_ds = ColumnDataSource(dict(x=df['time'], y=power_errors_df.get(room, []), temperature = df['external']))
+colors = linear_cmap(field_name='temperature', palette='Viridis256', low=-5, high=30)
+axs[3].scatter(x='x', y='y',  color=colors, source=room_details_ds)
+#axs[i+3].add_layout(LinearAxis(y_range_name='power'), 'right')
 axs[0].yaxis.axis_label = "Watts"
 axs[1].legend.location = 'bottom_right'
 axs[1].legend.background_fill_alpha = 0.5
 axs[1].yaxis.axis_label = 'Celsius'
-axs[1].title = 'Room temperatures'
+axs[1].title = f'{room} temperature'
 axs[1].legend.click_policy = 'mute'
 axs[2].title = 'Outside temperature'
 axs[2].yaxis.axis_label = 'Celsius'
 
 ds_outside = axs[2].line(x=[],y=[]).data_source
+def change_room(attr, old, new):
+    do_callback()
 
-curdoc().add_root(column(row(*sliders[:4]), row(Div(text='Use historical temperatures'), real_temperatures_switch, Div(text='Weather compensation'), weather_compensation_switch, *sliders[4:]), *axs))
+room_select.on_change('active', change_room)
+curdoc().add_root(gridplot([
+    [room_select], 
+    sliders[:2], 
+    sliders[2:4],
+    sliders[4:6], 
+    [Div(text='Use historical temperatures'), real_temperatures_switch],
+    [Div(text='Weather compensation'), weather_compensation_switch], 
+    axs[:2], 
+    axs[2:]
+]))
+    
 #curdoc().add_periodic_callback(update_data, 10)
 idle_callbacks = []
 
 def do_callback():
     while idle_callbacks:
-        curdoc().remove_timeout_callback(idle_callbacks.pop())
-    idle_callbacks.append( curdoc().add_timeout_callback(do_update, 2000))
+        try:
+            curdoc().remove_timeout_callback(idle_callbacks.pop())
+        except ValueError:
+            pass
+    idle_callbacks.append( curdoc().add_timeout_callback(do_update, 500))
 
-do_callback()
 for slider in sliders:
     slider.on_change('value', update_data)
 for switch in [weather_compensation_switch, real_temperatures_switch]:
