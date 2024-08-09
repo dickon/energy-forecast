@@ -1,0 +1,2341 @@
+{
+    "project_name": "56 New Road v12",
+    "degreedays": 1925,
+    "heating_MWT": 55,
+    "heatpump_flow_rate": 10,
+    "T": {
+      "external": -3,
+      "ground": 5,
+      "unheated": 10
+    },
+    "element_type": {
+      "Wall:External": {
+        "uvalue": 0.5
+      },
+      "Wall:Internal": {
+        "uvalue": 1.7
+      },
+      "Window": {
+        "uvalue": 1.6
+      },
+      "Door": {
+        "uvalue": 1.6
+      },
+      "Floor": {
+        "uvalue": 0.7
+      },
+      "Roof": {
+        "uvalue": 0.45
+      },
+      "Window box wood": {
+        "uvalue": 2
+      },
+      "Floor to carport": {
+        "uvalue": 1.82
+      },
+      "Sliding doors double glaze metal": {
+        "uvalue": 1.8
+      },
+      "Interior ceiling": {
+        "uvalue": 1.73
+      }
+    },
+    "rooms": {
+      "Box": {
+        "temperature": 22,
+        "area": 13.636339999999999,
+        "width": 3.94,
+        "length": 3.461,
+        "height": 2.322,
+        "air_change_an_hour": 0.25,
+        "elements": [
+          {
+            "id": 0,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 25,
+            "heat": 172.26,
+            "kwh": 318.33648
+          },
+          {
+            "id": 1,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 25,
+            "heat": 231.67199999999997,
+            "kwh": 428.12985599999996
+          },
+          {
+            "id": 2,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 25,
+            "heat": 231.948,
+            "kwh": 428.639904
+          },
+          {
+            "id": 4,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 25,
+            "heat": 117.00000000000001,
+            "kwh": 216.21600000000004
+          },
+          {
+            "id": 63,
+            "boundary": "Downstairs Guest suite",
+            "temperature": 10,
+            "deltaT": 12,
+            "heat": 186.633072,
+            "kwh": 0,
+            "link": 3
+          },
+          {
+            "id": 64,
+            "boundary": "Downstairs study",
+            "temperature": 22,
+            "deltaT": 0,
+            "heat": 0,
+            "kwh": 0,
+            "link": 4
+          },
+          {
+            "id": 71,
+            "boundary": "Master suite",
+            "temperature": 22,
+            "deltaT": 0,
+            "heat": 0,
+            "kwh": 0,
+            "link": 6
+          }
+        ],
+        "radiators": [
+          {
+            "name": "Type 11 contemporary 1300x600",
+            "heat50k": 1144,
+            "model": "pow",
+            "heat": 666.5506260439784
+          }
+        ],
+        "ufh": [],
+        "wk": 79.6601738721,
+        "heat": 1004.8192088024999,
+        "kwh": 1512.0079808110202,
+        "A": 62.603939999999994,
+        "total_external_area": 35.1579,
+        "total_external_boundary_area": 35.1579,
+        "total_unheated_boundary_area": 0,
+        "total_ground_boundary_area": 0,
+        "volume": 31.663581479999998,
+        "infiltration_heat": 65.3061368025,
+        "total_radiator_output": 666.5506260439784,
+        "total_ufh_output": 0,
+        "total_heat_output": 666.5506260439784,
+        "energy": 4270.965603015104
+      },
+      "Downstairs toilet": {
+        "temperature": 21,
+        "area": 2.43854,
+        "height": 2.331,
+        "air_change_an_hour": 0.5,
+        "elements": [
+          {
+            "id": 5,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 24,
+            "heat": 40.967472,
+            "kwh": 78.8623836
+          },
+          {
+            "id": 65,
+            "boundary": "Guest suite shower room",
+            "temperature": 10,
+            "deltaT": 11,
+            "heat": 64.0332693,
+            "kwh": 0,
+            "link": 3
+          },
+          {
+            "id": 66,
+            "boundary": "Dining room",
+            "temperature": 22,
+            "deltaT": -1,
+            "heat": -6.696962999999999,
+            "kwh": 0,
+            "link": 3
+          },
+          {
+            "id": 72,
+            "boundary": "Master suite",
+            "temperature": 22,
+            "deltaT": -1,
+            "heat": -4.218674200000001,
+            "kwh": 0,
+            "link": 7
+          },
+          {
+            "id": 73,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 24,
+            "heat": 139.64901600000002,
+            "kwh": 268.82435580000003
+          }
+        ],
+        "radiators": [
+          {
+            "name": "designer single 330x1900",
+            "heat50k": 650,
+            "model": "pow",
+            "heat": 393.7086378272487
+          }
+        ],
+        "wk": 25.2004295621,
+        "heat": 256.2436975904,
+        "kwh": 391.01767606902,
+        "A": 15.663478999999999,
+        "total_external_area": 5.8613100000000005,
+        "total_external_boundary_area": 5.8613100000000005,
+        "total_unheated_boundary_area": 0,
+        "total_ground_boundary_area": 0,
+        "volume": 5.68423674,
+        "infiltration_heat": 22.5095774904,
+        "total_radiator_output": 393.7086378272487,
+        "total_ufh_output": 0,
+        "ufh": [],
+        "total_heat_output": 393.7086378272487,
+        "energy": 3313.3865659232947,
+        "width": 1.469,
+        "length": 1.66
+      },
+      "Downstairs study": {
+        "temperature": 22,
+        "area": 9.37872,
+        "height": 2.372,
+        "air_change_an_hour": 0.5,
+        "elements": [
+          {
+            "id": 6,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 25,
+            "heat": 164.12759999999997,
+            "kwh": 303.30780479999993
+          },
+          {
+            "id": 7,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 25,
+            "heat": 49.812,
+            "kwh": 92.05257599999999
+          },
+          {
+            "id": 8,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 25,
+            "heat": 231.19080000000002,
+            "kwh": 427.24059840000007
+          },
+          {
+            "id": 9,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 25,
+            "heat": 153.7,
+            "kwh": 284.0376
+          },
+          {
+            "id": 64,
+            "link": 5,
+            "boundary": "Box",
+            "temperature": 22,
+            "deltaT": 0,
+            "heat": 0,
+            "kwh": 0
+          },
+          {
+            "id": 74,
+            "boundary": "Utility room",
+            "temperature": 20,
+            "deltaT": 2,
+            "heat": 24.158088000000003,
+            "kwh": 0,
+            "link": 1
+          },
+          {
+            "id": 81,
+            "boundary": "Medal area",
+            "temperature": 22,
+            "deltaT": 0,
+            "heat": 0,
+            "kwh": 0,
+            "link": 4
+          },
+          {
+            "id": 87,
+            "boundary": "Master suite",
+            "temperature": 22,
+            "deltaT": 0,
+            "heat": 0,
+            "kwh": 0,
+            "link": 9
+          }
+        ],
+        "radiators": [
+          {
+            "name": "Type 22 800x600",
+            "heat50k": 1331,
+            "model": "pow",
+            "heat": 775.5060168396286
+          }
+        ],
+        "wk": 83.7967330336,
+        "heat": 714.75457384,
+        "kwh": 1276.2223058323202,
+        "A": 55.094809999999995,
+        "total_external_area": 22.21745,
+        "total_external_boundary_area": 22.21745,
+        "total_unheated_boundary_area": 0,
+        "total_ground_boundary_area": 0,
+        "volume": 22.24632384,
+        "infiltration_heat": 91.76608584,
+        "total_radiator_output": 775.5060168396286,
+        "total_ufh_output": 0,
+        "ufh": [],
+        "total_heat_output": 775.5060168396286,
+        "energy": 3652.991502836216,
+        "width": 3.12,
+        "length": 3.006
+      },
+      "Downstairs Guest suite": {
+        "temperature": 10,
+        "area": 17.46221,
+        "height": 2.372,
+        "air_change_an_hour": 0.5,
+        "elements": [
+          {
+            "id": 10,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 13,
+            "heat": 59.97601999999999,
+            "kwh": 213.14554799999996
+          },
+          {
+            "id": 11,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 13,
+            "heat": 69.21140199999999,
+            "kwh": 245.96667479999996
+          },
+          {
+            "id": 12,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 13,
+            "heat": 158.90611099999998,
+            "kwh": 564.7278713999999
+          },
+          {
+            "id": 63,
+            "link": 4,
+            "boundary": "Box",
+            "temperature": 22,
+            "deltaT": -12,
+            "heat": -186.633072,
+            "kwh": 0
+          },
+          {
+            "id": 67,
+            "link": 4,
+            "boundary": "Master suite",
+            "temperature": 22,
+            "deltaT": -12,
+            "heat": -394.89879599999995,
+            "kwh": 0
+          }
+        ],
+        "radiators": [
+          {
+            "name": "Type 22 1600x600",
+            "heat50k": 2662,
+            "model": "pow",
+            "heat": 2321.2574649964035
+          }
+        ],
+        "wk": 77.4563897498,
+        "heat": -204.59165825259996,
+        "kwh": 1339.5875146407598,
+        "A": 65.507978,
+        "total_external_area": 37.337198,
+        "total_external_boundary_area": 37.337198,
+        "total_unheated_boundary_area": 0,
+        "total_ground_boundary_area": 0,
+        "volume": 41.42036211999999,
+        "infiltration_heat": 88.84667674739998,
+        "total_radiator_output": 2321.2574649964035,
+        "total_ufh_output": 0,
+        "ufh": [],
+        "total_heat_output": 2321.2574649964035,
+        "energy": 11062.254718621116,
+        "width": 3.89,
+        "length": 4.489
+      },
+      "Guest suite shower room": {
+        "temperature": 10,
+        "area": 4.594285999999999,
+        "height": 2.372,
+        "air_change_an_hour": 0.5,
+        "elements": [
+          {
+            "id": 13,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 13,
+            "heat": 32.778667999999996,
+            "kwh": 116.49034319999997
+          },
+          {
+            "id": 14,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 13,
+            "heat": 41.808002599999995,
+            "kwh": 148.57920923999998
+          },
+          {
+            "id": 15,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 13,
+            "heat": 9.305088000000001,
+            "kwh": 33.068851200000005
+          },
+          {
+            "id": 65,
+            "link": 1,
+            "boundary": "Downstairs toilet",
+            "temperature": 21,
+            "deltaT": -11,
+            "heat": -64.0332693,
+            "kwh": 0
+          },
+          {
+            "id": 68,
+            "link": 5,
+            "boundary": "Master suite",
+            "temperature": 22,
+            "deltaT": -12,
+            "heat": -91.5516,
+            "kwh": 0
+          }
+        ],
+        "radiators": [
+          {
+            "name": "Designer towel rail 500x1200",
+            "heat50k": 521,
+            "model": "pow",
+            "heat": 454.3107209853968
+          }
+        ],
+        "wk": 21.70183015468,
+        "heat": -48.31765918916001,
+        "kwh": 381.2111620862159,
+        "A": 17.918757,
+        "total_external_area": 10.084518,
+        "total_external_boundary_area": 10.084518,
+        "total_unheated_boundary_area": 0,
+        "total_ground_boundary_area": 0,
+        "volume": 10.897646391999999,
+        "infiltration_heat": 23.375451510839998,
+        "total_radiator_output": 454.3107209853968,
+        "total_ufh_output": 0,
+        "ufh": [],
+        "total_heat_output": 454.3107209853968,
+        "energy": 2732.604110857775,
+        "width": 2.126,
+        "length": 2.161
+      },
+      "Utility room": {
+        "temperature": 20,
+        "area": 2.898555,
+        "height": 2.32,
+        "air_change_an_hour": 0.5,
+        "elements": [
+          {
+            "id": 16,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 23,
+            "heat": 46.6667355,
+            "kwh": 93.73926870000001
+          },
+          {
+            "id": 74,
+            "link": 5,
+            "boundary": "Downstairs study",
+            "temperature": 22,
+            "deltaT": -2,
+            "heat": -24.158088000000003,
+            "kwh": 0
+          },
+          {
+            "id": 76,
+            "boundary": "Medal area",
+            "temperature": 22,
+            "deltaT": -2,
+            "heat": -24.158088000000003,
+            "kwh": 0,
+            "link": 3
+          },
+          {
+            "id": 88,
+            "boundary": "Entrance hall",
+            "temperature": 20,
+            "deltaT": 0,
+            "heat": 0,
+            "kwh": 0,
+            "link": 9
+          }
+        ],
+        "radiators": [
+          {
+            "name": "Type 21 contemporary 400x600",
+            "heat50k": 571,
+            "model": "pow",
+            "heat": 359.13981968371866
+          }
+        ],
+        "wk": 32.311143504,
+        "heat": 23.870597141999998,
+        "kwh": 145.0012573548,
+        "A": 20.00775,
+        "total_external_area": 2.898555,
+        "total_external_boundary_area": 2.898555,
+        "total_unheated_boundary_area": 0,
+        "total_ground_boundary_area": 0,
+        "volume": 6.7246476,
+        "infiltration_heat": 25.520037642000002,
+        "total_radiator_output": 359.13981968371866,
+        "total_ufh_output": 0,
+        "ufh": [],
+        "total_heat_output": 359.13981968371866,
+        "energy": 3084.737049311636,
+        "width": 1.815,
+        "length": 1.597
+      },
+      "Medal area": {
+        "temperature": 22,
+        "area": 6.405963999999999,
+        "height": 2.32,
+        "air_change_an_hour": 0.5,
+        "elements": [
+          {
+            "id": 17,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 25,
+            "heat": 112.10436999999997,
+            "kwh": 207.16887575999996
+          },
+          {
+            "id": 33,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 25,
+            "heat": 85.33944999999999,
+            "kwh": 157.70730359999996
+          },
+          {
+            "id": 70,
+            "boundary": "Entrance hall",
+            "temperature": 18,
+            "deltaT": 4,
+            "heat": 42.894943999999995,
+            "kwh": 0,
+            "link": 4
+          },
+          {
+            "id": 76,
+            "link": 2,
+            "boundary": "Utility room",
+            "temperature": 20,
+            "deltaT": 2,
+            "heat": 24.158088000000003,
+            "kwh": 0
+          },
+          {
+            "id": 81,
+            "link": 6,
+            "boundary": "Downstairs study",
+            "temperature": 22,
+            "deltaT": 0,
+            "heat": 0,
+            "kwh": 0
+          },
+          {
+            "id": 82,
+            "link": 7,
+            "boundary": "Kitchen",
+            "temperature": 21,
+            "deltaT": 1,
+            "heat": 14.687456,
+            "kwh": 0
+          },
+          {
+            "id": 89,
+            "boundary": "Entrance hall",
+            "temperature": 20,
+            "deltaT": 2,
+            "heat": 22.03501,
+            "kwh": 0,
+            "link": 10
+          },
+          {
+            "id": 90,
+            "boundary": "Master suite",
+            "temperature": 22,
+            "deltaT": 0,
+            "heat": 0,
+            "kwh": 0,
+            "link": 10
+          }
+        ],
+        "radiators": [
+          {
+            "name": "Designer 800x600 single",
+            "heat50k": 595,
+            "model": "pow",
+            "heat": 346.6762434407055
+          }
+        ],
+        "wk": 79.60006881919999,
+        "heat": 362.52439347999996,
+        "kwh": 478.1679588470399,
+        "A": 51.819524,
+        "total_external_area": 11.282504,
+        "total_external_boundary_area": 11.282504,
+        "total_unheated_boundary_area": 0,
+        "total_ground_boundary_area": 0,
+        "volume": 14.861836479999997,
+        "infiltration_heat": 61.30507547999999,
+        "total_radiator_output": 346.6762434407055,
+        "total_ufh_output": 0,
+        "ufh": [],
+        "total_heat_output": 346.6762434407055,
+        "energy": 2588.7370414834877,
+        "width": 2.356,
+        "length": 2.719
+      },
+      "Dining room": {
+        "temperature": 22,
+        "area": 25.201628999999997,
+        "height": 2.67,
+        "air_change_an_hour": 0.5,
+        "elements": [
+          {
+            "id": 25,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 25,
+            "heat": 441.02850749999993,
+            "kwh": 815.0206818599999
+          },
+          {
+            "id": 26,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 25,
+            "heat": 33.236200000000004,
+            "kwh": 61.420497600000004
+          },
+          {
+            "id": 27,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 25,
+            "heat": 378.49399999999997,
+            "kwh": 699.456912
+          },
+          {
+            "id": 66,
+            "link": 2,
+            "boundary": "Downstairs toilet",
+            "temperature": 21,
+            "deltaT": 1,
+            "heat": 6.696962999999999,
+            "kwh": 0
+          }
+        ],
+        "radiators": [
+          {
+            "name": "Double designer radiator 800x600",
+            "heat50k": 880,
+            "model": "pow",
+            "heat": 512.7312508030602
+          },
+          {
+            "name": "Single designer radiator 1200x600",
+            "heat50k": 1256,
+            "model": "pow",
+            "heat": 731.8073306916406
+          }
+        ],
+        "wk": 51.909888955949995,
+        "heat": 1137.0201118987497,
+        "kwh": 2088.8371791648897,
+        "A": 41.262265,
+        "total_external_area": 37.322874999999996,
+        "total_external_boundary_area": 37.322874999999996,
+        "total_unheated_boundary_area": 0,
+        "total_ground_boundary_area": 0,
+        "volume": 67.28834943,
+        "infiltration_heat": 277.56444139875,
+        "total_radiator_output": 1244.5385814947008,
+        "total_ufh_output": 0,
+        "ufh": [],
+        "total_heat_output": 1244.5385814947008,
+        "energy": 4392.31576444813,
+        "width": 5.193,
+        "length": 4.853
+      },
+      "Lounge": {
+        "temperature": 22,
+        "area": 31.904204999999997,
+        "height": 2.67,
+        "air_change_an_hour": 0.5,
+        "elements": [
+          {
+            "id": 28,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 25,
+            "heat": 1451.6413275,
+            "kwh": 2682.63317322
+          },
+          {
+            "id": 29,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 25,
+            "heat": 228.59550000000004,
+            "kwh": 422.4444840000001
+          },
+          {
+            "id": 30,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 25,
+            "heat": 125.52337499999999,
+            "kwh": 231.96719699999997
+          },
+          {
+            "id": 31,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 25,
+            "heat": 17.17125,
+            "kwh": 31.73247
+          },
+          {
+            "id": 32,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 25,
+            "heat": 27.19584,
+            "kwh": 50.257912319999996
+          },
+          false,
+          {
+            "id": 69,
+            "link": 6,
+            "boundary": "Kitchen",
+            "temperature": 21,
+            "deltaT": 1,
+            "heat": 24.322647999999997,
+            "kwh": 0
+          }
+        ],
+        "radiators": [
+          {
+            "name": "Designer single 1500x600",
+            "heat50k": 1000,
+            "model": "pow",
+            "heat": 582.6491486398412
+          },
+          {
+            "name": "Designer double 1000x600",
+            "heat50k": 1160,
+            "model": "pow",
+            "heat": 675.8730124222158
+          }
+        ],
+        "wk": 112.38313721275,
+        "heat": 2225.8348783187503,
+        "kwh": 4068.3946016290497,
+        "A": 63.387011,
+        "total_external_area": 49.079571,
+        "total_external_boundary_area": 49.079571,
+        "total_unheated_boundary_area": 0,
+        "total_ground_boundary_area": 0,
+        "volume": 85.18422734999999,
+        "infiltration_heat": 351.38493781874996,
+        "total_radiator_output": 1258.522161062057,
+        "total_ufh_output": 0,
+        "ufh": [],
+        "total_heat_output": 1258.522161062057,
+        "energy": 1776.559867173881,
+        "width": 5.165,
+        "length": 6.177
+      },
+      "Entrance hall": {
+        "temperature": 15,
+        "area": 14.9535,
+        "height": 7.027,
+        "air_change_an_hour": 0.5,
+        "elements": [
+          {
+            "id": 34,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 18,
+            "heat": 188.4141,
+            "kwh": 483.59619
+          },
+          {
+            "id": 35,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 18,
+            "heat": 139.32,
+            "kwh": 357.58799999999997
+          },
+          {
+            "id": 36,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 18,
+            "heat": 43.537499999999994,
+            "kwh": 111.74624999999997
+          },
+          {
+            "id": 37,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 18,
+            "heat": 82.30694400000002,
+            "kwh": 211.25448960000003
+          },
+          {
+            "id": 38,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 18,
+            "heat": 127.73564999999999,
+            "kwh": 327.85483500000004
+          },
+          {
+            "id": 39,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 21,
+            "heat": 56.02799999999999,
+            "kwh": 123.26159999999999
+          },
+          {
+            "id": 40,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 21,
+            "heat": 56.02799999999999,
+            "kwh": 123.26159999999999
+          },
+          {
+            "id": 41,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 21,
+            "heat": 73.07999999999998,
+            "kwh": 160.77599999999998
+          },
+          {
+            "id": 42,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 21,
+            "heat": 144.42624,
+            "kwh": 317.737728
+          },
+          {
+            "id": 70,
+            "link": 2,
+            "boundary": "Medal area",
+            "temperature": 22,
+            "deltaT": -4,
+            "heat": -42.894943999999995,
+            "kwh": 0
+          },
+          {
+            "id": 43,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 23,
+            "heat": 82.8,
+            "kwh": 166.32
+          },
+          {
+            "id": 44,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 23,
+            "heat": 150.133696,
+            "kwh": 301.5729024
+          },
+          {
+            "id": 49,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 23,
+            "heat": 41.108488799999996,
+            "kwh": 82.57444272000001
+          },
+          {
+            "id": 50,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 23,
+            "heat": 16.3743624,
+            "kwh": 32.89111056
+          },
+          {
+            "id": 80,
+            "link": 4,
+            "boundary": "Bathroom",
+            "temperature": 23,
+            "deltaT": -3,
+            "heat": -23.994224999999997,
+            "kwh": 0
+          },
+          {
+            "id": 78,
+            "link": 2,
+            "boundary": "Bathroom",
+            "temperature": 23,
+            "deltaT": -3,
+            "heat": -30.232723500000002,
+            "kwh": 0
+          },
+          {
+            "id": 83,
+            "link": 8,
+            "boundary": "Master suite",
+            "temperature": 22,
+            "deltaT": -2,
+            "heat": -5.120000000000001,
+            "kwh": 0
+          },
+          {
+            "id": 84,
+            "link": 5,
+            "boundary": "Upstairs study",
+            "temperature": 22,
+            "deltaT": -2,
+            "heat": -5.120000000000001,
+            "kwh": 0
+          },
+          {
+            "id": 85,
+            "link": 6,
+            "boundary": "Middle bedroom",
+            "temperature": 10,
+            "deltaT": 10,
+            "heat": 25.600000000000005,
+            "kwh": 0
+          },
+          {
+            "id": 88,
+            "link": 3,
+            "boundary": "Utility room",
+            "temperature": 20,
+            "deltaT": 0,
+            "heat": 0,
+            "kwh": 0
+          },
+          {
+            "id": 89,
+            "link": 6,
+            "boundary": "Medal area",
+            "temperature": 22,
+            "deltaT": -2,
+            "heat": -22.03501,
+            "kwh": 0
+          }
+        ],
+        "radiators": [
+          {
+            "name": "Type 22 1980s 1600x600",
+            "heat50k": 2662,
+            "model": "pow",
+            "heat": 1991.7050944830546
+          },
+          {
+            "name": "Type 11 1980s 1100x600",
+            "heat50k": 1046,
+            "model": "pow",
+            "heat": 657.8988640791063
+          }
+        ],
+        "wk": 44.19762086,
+        "heat": 795.5571754800001,
+        "kwh": 2041.930083732,
+        "A": 41.679230000000004,
+        "total_external_area": 41.679230000000004,
+        "total_external_boundary_area": 41.679230000000004,
+        "total_unheated_boundary_area": 0,
+        "total_ground_boundary_area": 0,
+        "volume": 36.067842,
+        "infiltration_heat": 214.24298148000003,
+        "total_radiator_output": 1991.7050944830546,
+        "total_ufh_output": 0,
+        "ufh": [],
+        "total_heat_output": 1991.7050944830546,
+        "energy": 6040.749492560523,
+        "width": 2.25,
+        "length": 6.646
+      },
+      "Master suite": {
+        "temperature": 22,
+        "area": 52.456464,
+        "height": 2.295,
+        "air_change_an_hour": 1.0,
+        "elements": [
+          {
+            "id": 45,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 25,
+            "heat": 225.91297500000002,
+            "kwh": 417.4871778
+          },
+          {
+            "id": 46,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 25,
+            "heat": 193.0959,
+            "kwh": 356.8412232
+          },
+          {
+            "id": 47,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 25,
+            "heat": 193.0959,
+            "kwh": 356.8412232
+          },
+          {
+            "id": 48,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 25,
+            "heat": 196.71174,
+            "kwh": 363.52329552
+          },
+          {
+            "id": 67,
+            "boundary": "Downstairs Guest suite",
+            "temperature": 10,
+            "deltaT": 12,
+            "heat": 394.89879599999995,
+            "kwh": 0,
+            "link": 4
+          },
+          {
+            "id": 68,
+            "boundary": "Guest suite shower room",
+            "temperature": 10,
+            "deltaT": 12,
+            "heat": 91.5516,
+            "kwh": 0,
+            "link": 4
+          },
+          {
+            "id": 71,
+            "link": 6,
+            "boundary": "Box",
+            "temperature": 22,
+            "deltaT": 0,
+            "heat": 0,
+            "kwh": 0
+          },
+          {
+            "id": 72,
+            "link": 3,
+            "boundary": "Downstairs toilet",
+            "temperature": 21,
+            "deltaT": 1,
+            "heat": 4.218674200000001,
+            "kwh": 0
+          },
+          {
+            "id": 83,
+            "boundary": "Entrance hall",
+            "temperature": 20,
+            "deltaT": 2,
+            "heat": 5.120000000000001,
+            "kwh": 0,
+            "link": 6
+          },
+          {
+            "id": 87,
+            "link": 7,
+            "boundary": "Downstairs study",
+            "temperature": 22,
+            "deltaT": 0,
+            "heat": 0,
+            "kwh": 0
+          },
+          {
+            "id": 90,
+            "link": 7,
+            "boundary": "Medal area",
+            "temperature": 22,
+            "deltaT": 0,
+            "heat": 0,
+            "kwh": 0
+          }
+        ],
+        "radiators": [
+          {
+            "name": "Type 11 1980s 1900x600",
+            "heat50k": 1862,
+            "model": "pow",
+            "heat": 1084.8927147673842
+          },
+          {
+            "name": "Type 22 1980s 470x600",
+            "heat50k": 827,
+            "model": "pow",
+            "heat": 481.85084592514863
+          },
+          {
+            "name": "Type 22 1980s 470x600",
+            "heat50k": 827,
+            "model": "pow",
+            "heat": 481.85084592514863
+          },
+          {
+            "name": "Type 11 1980s 470x600",
+            "heat50k": 406,
+            "model": "pow",
+            "heat": 236.5555543477755
+          },
+          {
+            "name": "Type 11 1980s 1100x600",
+            "heat50k": 1072,
+            "model": "pow",
+            "heat": 624.5998873419097
+          }
+        ],
+        "wk": 179.7396083156,
+        "heat": 2794.4019480899997,
+        "kwh": 4247.83659834072,
+        "A": 152.29368599999998,
+        "total_external_area": 101.424846,
+        "total_external_boundary_area": 101.424846,
+        "total_unheated_boundary_area": 0,
+        "total_ground_boundary_area": 0,
+        "volume": 120.38758487999999,
+        "infiltration_heat": 1489.79636289,
+        "total_radiator_output": 2909.749848307367,
+        "total_ufh_output": 0,
+        "ufh": [],
+        "total_heat_output": 2909.749848307367,
+        "energy": 5119.098077732407,
+        "length": 6.696,
+        "width": 7.834
+      },
+      "Bathroom": {
+        "temperature": 23,
+        "area": 5.29515,
+        "height": 2.295,
+        "air_change_an_hour": 1,
+        "elements": [
+          {
+            "id": 51,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 26,
+            "heat": 20.651085,
+            "kwh": 36.6953895
+          },
+          {
+            "id": 77,
+            "boundary": "Middle bedroom",
+            "temperature": 10,
+            "deltaT": 13,
+            "heat": 131.00846850000002,
+            "kwh": 0,
+            "link": 5
+          },
+          {
+            "id": 78,
+            "boundary": "Entrance hall",
+            "temperature": 20,
+            "deltaT": 3,
+            "heat": 30.232723500000002,
+            "kwh": 0,
+            "link": 5
+          },
+          {
+            "id": 79,
+            "boundary": "Upstairs study",
+            "temperature": 22,
+            "deltaT": 1,
+            "heat": 7.998074999999999,
+            "kwh": 0,
+            "link": 4
+          },
+          {
+            "id": 80,
+            "boundary": "Entrance hall",
+            "temperature": 20,
+            "deltaT": 3,
+            "heat": 23.994224999999997,
+            "kwh": 0,
+            "link": 4
+          },
+          {
+            "id": 86,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 26,
+            "heat": 66.56000000000002,
+            "kwh": 118.27200000000002
+          }
+        ],
+        "radiators": [
+          {
+            "name": "Type 11 1980s 630x600",
+            "heat50k": 582,
+            "model": "pow",
+            "heat": 325.80440424191374
+          }
+        ],
+        "wk": 43.5158533525,
+        "heat": 384.711905165,
+        "kwh": 340.2424110855,
+        "A": 28.16062,
+        "total_external_area": 6.895149999999999,
+        "total_external_boundary_area": 6.895149999999999,
+        "total_unheated_boundary_area": 0,
+        "total_ground_boundary_area": 0,
+        "volume": 12.152369249999998,
+        "infiltration_heat": 104.26732816499998,
+        "total_radiator_output": 325.80440424191374,
+        "total_ufh_output": 0,
+        "ufh": [],
+        "total_heat_output": 325.80440424191374,
+        "energy": 1710.8922977854404,
+        "width": 2.583,
+        "length": 2.05
+      },
+      "Middle bedroom": {
+        "temperature": 10,
+        "area": 22.063248,
+        "height": 2.295,
+        "air_change_an_hour": 0.5,
+        "elements": [
+          {
+            "id": 52,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 13,
+            "heat": 43.0233336,
+            "kwh": 152.89830864
+          },
+          {
+            "id": 53,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 13,
+            "heat": 28.3608,
+            "kwh": 100.78992
+          },
+          {
+            "id": 54,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 13,
+            "heat": 120.38207999999999,
+            "kwh": 427.81939199999994
+          },
+          {
+            "id": 56,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 13,
+            "heat": 5.8032,
+            "kwh": 20.62368
+          },
+          {
+            "id": 75,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 13,
+            "heat": 230.82444449999997,
+            "kwh": 820.3145642999999
+          },
+          {
+            "id": 77,
+            "link": 1,
+            "boundary": "Bathroom",
+            "temperature": 23,
+            "deltaT": -13,
+            "heat": -131.00846850000002,
+            "kwh": 0
+          },
+          {
+            "id": 85,
+            "boundary": "Entrance hall",
+            "temperature": 20,
+            "deltaT": -10,
+            "heat": -25.600000000000005,
+            "kwh": 0,
+            "link": 8
+          }
+        ],
+        "radiators": [
+          {
+            "name": "Type 11 1980s 630x600",
+            "heat50k": 582,
+            "model": "pow",
+            "heat": 507.50257123512654
+          },
+          {
+            "name": "Type 11 1980s 1270x600",
+            "heat50k": 1138,
+            "model": "pow",
+            "heat": 992.3332062982371
+          }
+        ],
+        "wk": 53.9457486364,
+        "heat": 380.3977952731999,
+        "kwh": 1908.43764510168,
+        "A": 51.079378,
+        "total_external_area": 43.551393,
+        "total_external_boundary_area": 43.551393,
+        "total_unheated_boundary_area": 0,
+        "total_ground_boundary_area": 0,
+        "volume": 50.63515416,
+        "infiltration_heat": 108.6124056732,
+        "total_radiator_output": 1499.8357775333636,
+        "total_ufh_output": 0,
+        "ufh": [],
+        "total_heat_output": 1499.8357775333636,
+        "energy": 3200.95529508117,
+        "width": 4.848,
+        "length": 4.551
+      },
+      "Upstairs study": {
+        "temperature": 22,
+        "area": 54.1959,
+        "height": 1.2,
+        "air_change_an_hour": 0.5,
+        "elements": [
+          {
+            "id": 57,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 25,
+            "heat": 90.75,
+            "kwh": 167.70600000000002
+          },
+          {
+            "id": 58,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 25,
+            "heat": 90.75,
+            "kwh": 167.70600000000002
+          },
+          {
+            "id": 59,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 25,
+            "heat": 195.844275,
+            "kwh": 361.9202202
+          },
+          {
+            "id": 60,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 25,
+            "heat": 198.02400000000003,
+            "kwh": 365.94835200000006
+          },
+          {
+            "id": 79,
+            "link": 3,
+            "boundary": "Bathroom",
+            "temperature": 23,
+            "deltaT": -1,
+            "heat": -7.998074999999999,
+            "kwh": 0
+          },
+          {
+            "id": 84,
+            "boundary": "Entrance hall",
+            "temperature": 20,
+            "deltaT": 2,
+            "heat": 5.120000000000001,
+            "kwh": 0,
+            "link": 7
+          }
+        ],
+        "radiators": [
+          {
+            "name": "Type 22 1980s 630x750",
+            "heat50k": 1177,
+            "model": "pow",
+            "heat": 685.7780479490931
+          },
+          {
+            "name": "Type 22 1980s 1300x600",
+            "heat50k": 2385,
+            "model": "pow",
+            "heat": 1389.6182195060212
+          }
+        ],
+        "wk": 44.3035942,
+        "heat": 840.7599050000001,
+        "kwh": 1559.04298704,
+        "A": 78.00049,
+        "total_external_area": 71.69574,
+        "total_external_boundary_area": 71.69574,
+        "total_unheated_boundary_area": 0,
+        "total_ground_boundary_area": 0,
+        "volume": 65.03508,
+        "infiltration_heat": 268.269705,
+        "total_radiator_output": 2075.3962674551144,
+        "total_ufh_output": 0,
+        "ufh": [],
+        "total_heat_output": 2075.3962674551144,
+        "energy": 4384.432355689976,
+        "width": 8.958,
+        "length": 6.05
+      },
+      "Kitchen": {
+        "temperature": 21,
+        "area": 22.965908,
+        "height": 2.32,
+        "air_change_an_hour": 0.5,
+        "elements": [
+          {
+            "id": 18,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 24,
+            "heat": 187.6896,
+            "kwh": 361.30248
+          },
+          {
+            "id": 20,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 24,
+            "heat": 504.2593920000001,
+            "kwh": 970.6993296000003
+          },
+          {
+            "id": 21,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 24,
+            "heat": 103.67616000000001,
+            "kwh": 199.57660800000002
+          },
+          {
+            "id": 22,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 24,
+            "heat": 49.32000000000001,
+            "kwh": 94.94100000000002
+          },
+          {
+            "id": 23,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 24,
+            "heat": 110.02368,
+            "kwh": 211.79558400000002
+          },
+          {
+            "id": 24,
+            "boundary": "external",
+            "temperature": -3,
+            "deltaT": 24,
+            "heat": 110.02368,
+            "kwh": 211.79558400000002
+          },
+          {
+            "id": 69,
+            "boundary": "Lounge",
+            "temperature": 22,
+            "deltaT": -1,
+            "heat": -24.322647999999997,
+            "kwh": 0,
+            "link": 6
+          },
+          {
+            "id": 82,
+            "boundary": "Medal area",
+            "temperature": 22,
+            "deltaT": -1,
+            "heat": -14.687456,
+            "kwh": 0,
+            "link": 5
+          }
+        ],
+        "radiators": [
+          {
+            "name": "Type 21 1980s  1300x600",
+            "heat50k": 1840,
+            "model": "pow",
+            "heat": 1114.4982978494425
+          },
+          {
+            "name": "Hydronic plinth heater",
+            "heat50k": 1100,
+            "model": "pow",
+            "heat": 666.2761563230363
+          }
+        ],
+        "wk": 92.17614158239999,
+        "heat": 1236.9747979775998,
+        "kwh": 2456.2709363068802,
+        "A": 64.1436,
+        "total_external_area": 41.19648,
+        "total_external_boundary_area": 41.19648,
+        "total_unheated_boundary_area": 0,
+        "total_ground_boundary_area": 0,
+        "volume": 53.28090655999999,
+        "infiltration_heat": 210.99238997759997,
+        "total_radiator_output": 1780.7744541724787,
+        "total_ufh_output": 0,
+        "ufh": [],
+        "total_heat_output": 1780.7744541724787,
+        "energy": 7188.360125130604,
+        "width": 3.724,
+        "length": 6.167
+      }
+    },
+    "house": {
+      "heatloss": 12614.742663212042,
+      "kwh": 25948.668463792532,
+      "total_heat_output": 19061.374982646237,
+      "internal_heat_balance": -1.1191048088221578e-13,
+      "total_area": 308.939523,
+      "total_volume": 676.7985179619999,
+      "total_external_area": 567.5565359999999,
+      "total_external_boundary_area": 567.5565359999999,
+      "total_unheated_boundary_area": 0,
+      "total_ground_boundary_area": 0,
+      "wk": null
+    },
+    "JK": 50,
+    "heatpump_flow_temperature": 68.77930721637077,
+    "cop_calculation_method": "ecodan",
+    "heatpump_capacity": 5,
+    "heatpump_COP": null,
+    "heatpump_elec": null,
+    "solver_running": false,
+    "elements": [
+      {
+        "type": "Wall:External",
+        "orientation": "",
+        "width": 5.94,
+        "height": 2.32,
+        "A": 13.7808,
+        "uvalue": 0.5,
+        "wk": 6.8904
+      },
+      {
+        "type": "Floor",
+        "orientation": "",
+        "width": 3.94,
+        "height": 3.36,
+        "A": 13.238399999999999,
+        "uvalue": 0.7,
+        "wk": 9.266879999999999
+      },
+      {
+        "type": "Window",
+        "orientation": "",
+        "width": 3.79,
+        "height": 1.53,
+        "A": 5.7987,
+        "uvalue": 1.6,
+        "wk": 9.27792
+      },
+      false,
+      {
+        "type": "Window box wood",
+        "orientation": "",
+        "width": 2.6,
+        "height": 0.9,
+        "A": 2.3400000000000003,
+        "uvalue": 2,
+        "wk": 4.680000000000001
+      },
+      {
+        "type": "Floor",
+        "orientation": "",
+        "width": 1.469,
+        "height": 1.66,
+        "A": 2.43854,
+        "uvalue": 0.7,
+        "wk": 1.706978
+      },
+      {
+        "type": "Floor",
+        "orientation": "",
+        "width": 3.12,
+        "height": 3.006,
+        "A": 9.37872,
+        "uvalue": 0.7,
+        "wk": 6.565103999999999
+      },
+      {
+        "type": "Wall:External",
+        "orientation": "",
+        "width": 1.68,
+        "height": 2.372,
+        "A": 3.9849599999999996,
+        "uvalue": 0.5,
+        "wk": 1.9924799999999998
+      },
+      {
+        "type": "Window",
+        "orientation": "",
+        "width": 3.81,
+        "height": 1.517,
+        "A": 5.77977,
+        "uvalue": 1.6,
+        "wk": 9.247632000000001
+      },
+      {
+        "type": "Window box wood",
+        "orientation": "",
+        "width": 2.65,
+        "height": 1.16,
+        "A": 3.074,
+        "uvalue": 2,
+        "wk": 6.148
+      },
+      {
+        "type": "Wall:External",
+        "orientation": "",
+        "width": 3.89,
+        "height": 2.372,
+        "A": 9.227079999999999,
+        "uvalue": 0.5,
+        "wk": 4.6135399999999995
+      },
+      {
+        "type": "Wall:External",
+        "orientation": "",
+        "width": 4.489,
+        "height": 2.372,
+        "A": 10.647908,
+        "uvalue": 0.5,
+        "wk": 5.323954
+      },
+      {
+        "type": "Floor",
+        "orientation": "",
+        "width": 3.89,
+        "height": 4.489,
+        "A": 17.46221,
+        "uvalue": 0.7,
+        "wk": 12.223546999999998
+      },
+      {
+        "type": "Wall:External",
+        "orientation": "",
+        "width": 2.126,
+        "height": 2.372,
+        "A": 5.042871999999999,
+        "uvalue": 0.5,
+        "wk": 2.5214359999999996
+      },
+      {
+        "type": "Floor",
+        "orientation": "",
+        "width": 2.126,
+        "height": 2.161,
+        "A": 4.594285999999999,
+        "uvalue": 0.7,
+        "wk": 3.2160001999999994
+      },
+      {
+        "type": "Window",
+        "orientation": "",
+        "width": 1.165,
+        "height": 0.384,
+        "A": 0.44736000000000004,
+        "uvalue": 1.6,
+        "wk": 0.7157760000000001
+      },
+      {
+        "type": "Floor",
+        "orientation": "",
+        "width": 1.815,
+        "height": 1.597,
+        "A": 2.898555,
+        "uvalue": 0.7,
+        "wk": 2.0289885
+      },
+      {
+        "type": "Floor",
+        "orientation": "",
+        "width": 2.356,
+        "height": 2.719,
+        "A": 6.405963999999999,
+        "uvalue": 0.7,
+        "wk": 4.484174799999999
+      },
+      {
+        "type": "Floor",
+        "orientation": "",
+        "width": 3,
+        "height": 3.724,
+        "A": 11.172,
+        "uvalue": 0.7,
+        "wk": 7.8204
+      },
+      false,
+      {
+        "type": "Floor to carport",
+        "orientation": "",
+        "width": 3.1,
+        "height": 3.724,
+        "A": 11.544400000000001,
+        "uvalue": 1.82,
+        "wk": 21.010808000000004
+      },
+      {
+        "type": "Wall:External",
+        "orientation": "",
+        "width": 3.724,
+        "height": 2.32,
+        "A": 8.63968,
+        "uvalue": 0.5,
+        "wk": 4.31984
+      },
+      {
+        "type": "Wall:External",
+        "orientation": "",
+        "width": 3,
+        "height": 1.37,
+        "A": 4.11,
+        "uvalue": 0.5,
+        "wk": 2.055
+      },
+      {
+        "type": "Window",
+        "orientation": "",
+        "width": 3.016,
+        "height": 0.95,
+        "A": 2.8651999999999997,
+        "uvalue": 1.6,
+        "wk": 4.58432
+      },
+      {
+        "type": "Window",
+        "orientation": "",
+        "width": 3.016,
+        "height": 0.95,
+        "A": 2.8651999999999997,
+        "uvalue": 1.6,
+        "wk": 4.58432
+      },
+      {
+        "type": "Floor",
+        "orientation": "",
+        "width": 5.193,
+        "height": 4.853,
+        "A": 25.201628999999997,
+        "uvalue": 0.7,
+        "wk": 17.641140299999996
+      },
+      {
+        "type": "Wall:External",
+        "orientation": "",
+        "width": 4.852,
+        "height": 0.548,
+        "A": 2.6588960000000004,
+        "uvalue": 0.5,
+        "wk": 1.3294480000000002
+      },
+      {
+        "type": "Window",
+        "orientation": "",
+        "width": 4.85,
+        "height": 1.951,
+        "A": 9.462349999999999,
+        "uvalue": 1.6,
+        "wk": 15.139759999999999
+      },
+      {
+        "type": "Floor to carport",
+        "orientation": "",
+        "width": 5.165,
+        "height": 6.177,
+        "A": 31.904204999999997,
+        "uvalue": 1.82,
+        "wk": 58.0656531
+      },
+      {
+        "type": "Sliding doors double glaze metal",
+        "orientation": "",
+        "width": 2.419,
+        "height": 2.1,
+        "A": 5.0799,
+        "uvalue": 1.8,
+        "wk": 9.143820000000002
+      },
+      {
+        "type": "Wall:External",
+        "orientation": "",
+        "width": 3.761,
+        "height": 2.67,
+        "A": 10.04187,
+        "uvalue": 0.5,
+        "wk": 5.020935
+      },
+      {
+        "type": "Wall:External",
+        "orientation": "",
+        "width": 2.41,
+        "height": 0.57,
+        "A": 1.3737,
+        "uvalue": 0.5,
+        "wk": 0.68685
+      },
+      {
+        "type": "Window",
+        "orientation": "",
+        "width": 1.197,
+        "height": 0.568,
+        "A": 0.679896,
+        "uvalue": 1.6,
+        "wk": 1.0878336
+      },
+      {
+        "type": "Floor",
+        "orientation": "",
+        "width": 0.82,
+        "height": 5.947,
+        "A": 4.876539999999999,
+        "uvalue": 0.7,
+        "wk": 3.4135779999999993
+      },
+      {
+        "type": "Floor",
+        "orientation": "",
+        "width": 2.25,
+        "height": 6.646,
+        "A": 14.9535,
+        "uvalue": 0.7,
+        "wk": 10.46745
+      },
+      {
+        "type": "Door",
+        "orientation": "",
+        "width": 2.25,
+        "height": 2.15,
+        "A": 4.8374999999999995,
+        "uvalue": 1.6,
+        "wk": 7.739999999999999
+      },
+      {
+        "type": "Wall:External",
+        "orientation": "",
+        "width": 2.25,
+        "height": 2.15,
+        "A": 4.8374999999999995,
+        "uvalue": 0.5,
+        "wk": 2.4187499999999997
+      },
+      {
+        "type": "Window",
+        "orientation": "",
+        "width": 1.48,
+        "height": 1.931,
+        "A": 2.85788,
+        "uvalue": 1.6,
+        "wk": 4.572608000000001
+      },
+      {
+        "type": "Wall:External",
+        "orientation": "",
+        "width": 7.35,
+        "height": 1.931,
+        "A": 14.19285,
+        "uvalue": 0.5,
+        "wk": 7.096425
+      },
+      {
+        "type": "Wall:External",
+        "orientation": "",
+        "width": 2.3,
+        "height": 2.32,
+        "A": 5.335999999999999,
+        "uvalue": 0.5,
+        "wk": 2.6679999999999997
+      },
+      {
+        "type": "Wall:External",
+        "orientation": "",
+        "width": 2.3,
+        "height": 2.32,
+        "A": 5.335999999999999,
+        "uvalue": 0.5,
+        "wk": 2.6679999999999997
+      },
+      {
+        "type": "Wall:External",
+        "orientation": "",
+        "width": 3,
+        "height": 2.32,
+        "A": 6.959999999999999,
+        "uvalue": 0.5,
+        "wk": 3.4799999999999995
+      },
+      {
+        "type": "Window",
+        "orientation": "",
+        "width": 3.582,
+        "height": 1.2,
+        "A": 4.2984,
+        "uvalue": 1.6,
+        "wk": 6.87744
+      },
+      {
+        "type": "Wall:External",
+        "orientation": "",
+        "width": 3,
+        "height": 2.4,
+        "A": 7.199999999999999,
+        "uvalue": 0.5,
+        "wk": 3.5999999999999996
+      },
+      {
+        "type": "Window",
+        "orientation": "",
+        "width": 3.517,
+        "height": 1.16,
+        "A": 4.07972,
+        "uvalue": 1.6,
+        "wk": 6.527552
+      },
+      {
+        "type": "Wall:External",
+        "orientation": "",
+        "width": 7.834,
+        "height": 2.307,
+        "A": 18.073038,
+        "uvalue": 0.5,
+        "wk": 9.036519
+      },
+      {
+        "type": "Wall:External",
+        "orientation": "",
+        "width": 6.696,
+        "height": 2.307,
+        "A": 15.447671999999999,
+        "uvalue": 0.5,
+        "wk": 7.7238359999999995
+      },
+      {
+        "type": "Wall:External",
+        "orientation": "",
+        "width": 6.696,
+        "height": 2.307,
+        "A": 15.447671999999999,
+        "uvalue": 0.5,
+        "wk": 7.7238359999999995
+      },
+      {
+        "type": "Roof",
+        "orientation": "",
+        "width": 7.834,
+        "height": 6.696,
+        "A": 52.456464,
+        "uvalue": 0.45,
+        "wk": 7.868469599999999
+      },
+      {
+        "type": "Roof",
+        "orientation": "",
+        "width": 2.468,
+        "height": 4.828,
+        "A": 11.915504,
+        "uvalue": 0.15,
+        "wk": 1.7873256
+      },
+      {
+        "type": "Roof",
+        "orientation": "",
+        "width": 2.136,
+        "height": 2.222,
+        "A": 4.746192000000001,
+        "uvalue": 0.15,
+        "wk": 0.7119288
+      },
+      {
+        "type": "Roof",
+        "orientation": "",
+        "width": 2.583,
+        "height": 2.05,
+        "A": 5.29515,
+        "uvalue": 0.15,
+        "wk": 0.7942724999999999
+      },
+      {
+        "type": "Roof",
+        "orientation": "",
+        "width": 4.848,
+        "height": 4.551,
+        "A": 22.063248,
+        "uvalue": 0.15,
+        "wk": 3.3094872
+      },
+      {
+        "type": "Wall:External",
+        "orientation": "",
+        "width": 4.848,
+        "height": 0.9,
+        "A": 4.3632,
+        "uvalue": 0.5,
+        "wk": 2.1816
+      },
+      {
+        "type": "Window",
+        "orientation": "",
+        "width": 4.2,
+        "height": 1.378,
+        "A": 5.787599999999999,
+        "uvalue": 1.6,
+        "wk": 9.260159999999999
+      },
+      false,
+      {
+        "type": "Wall:External",
+        "orientation": "",
+        "width": 0.64,
+        "height": 1.395,
+        "A": 0.8928,
+        "uvalue": 0.5,
+        "wk": 0.4464
+      },
+      {
+        "type": "Wall:External",
+        "orientation": "",
+        "width": 6.05,
+        "height": 1.2,
+        "A": 7.26,
+        "uvalue": 0.5,
+        "wk": 3.63
+      },
+      {
+        "type": "Wall:External",
+        "orientation": "",
+        "width": 6.05,
+        "height": 1.2,
+        "A": 7.26,
+        "uvalue": 0.5,
+        "wk": 3.63
+      },
+      {
+        "type": "Roof",
+        "orientation": "",
+        "width": 8.958,
+        "height": 5.83,
+        "A": 52.22514,
+        "uvalue": 0.15,
+        "wk": 7.8337710000000005
+      },
+      {
+        "type": "Window",
+        "orientation": "",
+        "width": 3.7,
+        "height": 1.338,
+        "A": 4.9506000000000006,
+        "uvalue": 1.6,
+        "wk": 7.920960000000001
+      },
+      false,
+      false,
+      {
+        "type": "Wall:Internal",
+        "orientation": "",
+        "width": 3.94,
+        "height": 2.322,
+        "A": 9.14868,
+        "uvalue": 1.7,
+        "wk": 15.552756
+      },
+      {
+        "type": "Wall:Internal",
+        "orientation": "",
+        "width": 3.94,
+        "height": 2.322,
+        "A": 9.14868,
+        "uvalue": 1.7,
+        "wk": 15.552756
+      },
+      {
+        "type": "Wall:Internal",
+        "orientation": "",
+        "width": 1.469,
+        "height": 2.331,
+        "A": 3.424239,
+        "uvalue": 1.7,
+        "wk": 5.8212063
+      },
+      {
+        "type": "Wall:Internal",
+        "orientation": "",
+        "width": 1.69,
+        "height": 2.331,
+        "A": 3.93939,
+        "uvalue": 1.7,
+        "wk": 6.696962999999999
+      },
+      {
+        "type": "Interior ceiling",
+        "orientation": "",
+        "width": 3.89,
+        "height": 4.89,
+        "A": 19.0221,
+        "uvalue": 1.73,
+        "wk": 32.908232999999996
+      },
+      {
+        "type": "Interior ceiling",
+        "orientation": "",
+        "width": 2.1,
+        "height": 2.1,
+        "A": 4.41,
+        "uvalue": 1.73,
+        "wk": 7.6293
+      },
+      {
+        "type": "Wall:Internal",
+        "orientation": "",
+        "width": 6.167,
+        "height": 2.32,
+        "A": 14.307439999999998,
+        "uvalue": 1.7,
+        "wk": 24.322647999999997
+      },
+      {
+        "type": "Wall:Internal",
+        "orientation": "",
+        "width": 2.719,
+        "height": 2.32,
+        "A": 6.3080799999999995,
+        "uvalue": 1.7,
+        "wk": 10.723735999999999
+      },
+      {
+        "type": "Interior ceiling",
+        "orientation": "",
+        "width": 3.94,
+        "height": 2.322,
+        "A": 9.14868,
+        "uvalue": 1.73,
+        "wk": 15.827216400000001
+      },
+      {
+        "type": "Interior ceiling",
+        "orientation": "",
+        "width": 1.469,
+        "height": 1.66,
+        "A": 2.43854,
+        "uvalue": 1.73,
+        "wk": 4.218674200000001
+      },
+      {
+        "type": "Wall:Internal",
+        "orientation": "",
+        "width": 1.469,
+        "height": 2.33,
+        "A": 3.4227700000000003,
+        "uvalue": 1.7,
+        "wk": 5.818709
+      },
+      {
+        "type": "Wall:Internal",
+        "orientation": "",
+        "width": 3.06,
+        "height": 2.322,
+        "A": 7.105320000000001,
+        "uvalue": 1.7,
+        "wk": 12.079044000000001
+      },
+      {
+        "type": "Wall:Internal",
+        "orientation": "",
+        "width": 4.551,
+        "height": 2.295,
+        "A": 10.444545,
+        "uvalue": 1.7,
+        "wk": 17.755726499999998
+      },
+      {
+        "type": "Wall:Internal",
+        "orientation": "",
+        "width": 3.06,
+        "height": 2.322,
+        "A": 7.105320000000001,
+        "uvalue": 1.7,
+        "wk": 12.079044000000001
+      },
+      {
+        "type": "Wall:Internal",
+        "orientation": "",
+        "width": 2.583,
+        "height": 2.295,
+        "A": 5.9279850000000005,
+        "uvalue": 1.7,
+        "wk": 10.0775745
+      },
+      {
+        "type": "Wall:Internal",
+        "orientation": "",
+        "width": 2.583,
+        "height": 2.295,
+        "A": 5.9279850000000005,
+        "uvalue": 1.7,
+        "wk": 10.0775745
+      },
+      {
+        "type": "Wall:Internal",
+        "orientation": "",
+        "width": 2.05,
+        "height": 2.295,
+        "A": 4.70475,
+        "uvalue": 1.7,
+        "wk": 7.998074999999999
+      },
+      {
+        "type": "Wall:Internal",
+        "orientation": "",
+        "width": 2.05,
+        "height": 2.295,
+        "A": 4.70475,
+        "uvalue": 1.7,
+        "wk": 7.998074999999999
+      },
+      {
+        "type": "Wall:Internal",
+        "orientation": "",
+        "width": 3.12,
+        "height": 2.322,
+        "A": 7.24464,
+        "uvalue": 1.7,
+        "wk": 12.315888000000001
+      },
+      {
+        "type": "Wall:Internal",
+        "orientation": "",
+        "width": 3.724,
+        "height": 2.32,
+        "A": 8.63968,
+        "uvalue": 1.7,
+        "wk": 14.687456
+      },
+      {
+        "type": "Door",
+        "orientation": "",
+        "width": 0.8,
+        "height": 2,
+        "A": 1.6,
+        "uvalue": 1.6,
+        "wk": 2.5600000000000005
+      },
+      {
+        "type": "Door",
+        "orientation": "",
+        "width": 0.8,
+        "height": 2,
+        "A": 1.6,
+        "uvalue": 1.6,
+        "wk": 2.5600000000000005
+      },
+      {
+        "type": "Door",
+        "orientation": "",
+        "width": 0.8,
+        "height": 2,
+        "A": 1.6,
+        "uvalue": 1.6,
+        "wk": 2.5600000000000005
+      },
+      {
+        "type": "Door",
+        "orientation": "",
+        "width": 0.8,
+        "height": 2,
+        "A": 1.6,
+        "uvalue": 1.6,
+        "wk": 2.5600000000000005
+      },
+      {
+        "type": "Interior ceiling",
+        "orientation": "",
+        "width": 3.12,
+        "height": 3.006,
+        "A": 9.37872,
+        "uvalue": 1.73,
+        "wk": 16.2251856
+      },
+      {
+        "type": "Interior ceiling",
+        "orientation": "",
+        "width": 1.815,
+        "height": 1.597,
+        "A": 2.898555,
+        "uvalue": 1.73,
+        "wk": 5.01450015
+      },
+      {
+        "type": "Interior ceiling",
+        "orientation": "",
+        "width": 2.35,
+        "height": 2.71,
+        "A": 6.3685,
+        "uvalue": 1.73,
+        "wk": 11.017505
+      },
+      {
+        "type": "Interior ceiling",
+        "orientation": "",
+        "width": 0.82,
+        "height": 5.94,
+        "A": 4.8708,
+        "uvalue": 1.73,
+        "wk": 8.426484
+      }
+    ],
+    "heatlossjs_version": 3
+  }
