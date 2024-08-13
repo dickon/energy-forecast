@@ -6,9 +6,9 @@ import influxdb_client, time
 from influxdb_client.client.write_api import SYNCHRONOUS
 import numpy as np
 import pandas as pd
-from bokeh.layouts import column, row, gridplot
+from bokeh.layouts import column, row, layout, gridplot
 from bokeh.plotting import figure, show
-from bokeh.models import Slider, Switch, Div, CrosshairTool, Span, HoverTool, ColumnDataSource, Range1d, LinearAxis,  DateRangeSlider, RadioGroup
+from bokeh.models import Slider, Switch, Div, CrosshairTool, Span, HoverTool, ColumnDataSource, Range1d, LinearAxis,  DateRangeSlider, RadioGroup, Button
 from bokeh.io import curdoc
 from structures import HouseData, TemperaturePoint
 from bokeh.palettes import Category20, magma, plasma
@@ -65,6 +65,7 @@ from(bucket: "home-assistant")
             temps.append(t)
     room_temperatures = {}
     room_setpoints = {}
+    gas_readings = {}
     for col in query_api.query(f"""
 from(bucket: "56new")
   |> range(start:{start.strftime('%Y-%m-%dT%H:%M:%SZ')}, stop: {(start+timedelta(days=365)).strftime('%Y-%m-%dT%H:%M:%SZ')})
@@ -82,11 +83,21 @@ from(bucket: "56new")
             if row['_field'] == 'setpoint':
                 room_setpoints.setdefault(loc, {})
                 room_setpoints[loc][row['_time']] = row['_value']
-    return HouseData(outside_temperatures=temps, room_setpoints=room_setpoints, room_temperatures=room_temperatures)
+    for col in query_api.query(f"""
+        from(bucket: "56new")
+        |> range(start:{start.strftime('%Y-%m-%dT%H:%M:%SZ')}, stop: {(start+timedelta(days=365)).strftime('%Y-%m-%dT%H:%M:%SZ')})
+        |> filter(fn: (r) => r["_measurement"] == "usage")
+        |> filter(fn: (r) => r["_field"] == "usage")
+        |> filter(fn: (r) => r["device_name"] == "utility meter")
+        |> filter(fn: (r) => r["energy"] == "gas" )
+                               """)    :
+        for row in col:
+            gas_readings[(row["_time"]+timedelta(minutes=5)).isoformat()] = row["_value"]
+    return HouseData(outside_temperatures=temps, room_setpoints=room_setpoints, room_temperatures=room_temperatures, gas_readings=gas_readings)
 
 
 def load_house_data() -> HouseData:
-    CACHE = 'house_data.pickle'
+    CACHE = f'house_data_{interval_minutes}.pickle'
     if os.path.isfile(CACHE):
         print('reading', CACHE)
         with open(CACHE, 'rb') as f:
@@ -99,7 +110,7 @@ def load_house_data() -> HouseData:
         return house_data
 
 house_data = load_house_data()
-print(house_data.room_temperatures.keys())
+#pprint.pprint(house_data.gas_readings)
 
 with open('heatmodel.json', 'r') as f:
     data = json.load(f)
@@ -129,11 +140,17 @@ def calculate_data():
     system_power = power_slider.value
     room_powers_series = {k: [] for k in data['rooms'].keys()}
     input_power_series = []
+    heat_loss_series = {k: [] for k in data['rooms'].keys()}
+    heat_gain_series = {k: [] for k in data['rooms'].keys()}
+    setpoints_series = {k: [] for k in data['rooms'].keys()}
+    gas_use_series = []
     while t < end_t:
         while cursor+ 1< len(house_data.outside_temperatures) and house_data.outside_temperatures[cursor+1].time < t:
             cursor += 1
         next_t = t + timedelta(minutes=interval_minutes)
         rec = house_data.outside_temperatures[cursor]
+        gas_reading = house_data.gas_readings.get(t.isoformat(), 0.0)
+        gas_use_series.append(  gas_reading )
         temperatures['external'] = rec.temperature
         timestamps.append(t)
         satisfaction = 1.0
@@ -158,31 +175,36 @@ def calculate_data():
         for phase in [0,1]:
             house_rad_output = 0
             for room_index, (room_name, room_data) in enumerate(data['rooms'].items()):
-                target_t = (21.5 if room_name != 'Master suite' else 19) 
+                target_t_lagged = target_t = (21.5 if room_name != 'Master suite' else 19)
                 room_name_alias = room_name
                 if room_name_alias == 'Medal area' or room_name_alias == 'Downstairs toilet' or room_name_alias == 'Dining room': 
                     room_name_alias = 'Lounge'
                 if room_name_alias == 'Guest suite shower room':
                     room_name_alias = 'Guest suite'
 
-                if real_temperatures_switch.active:
+                if real_setpoints_switch.active:
                     if room_name_alias in house_data.room_setpoints:
                         realset = house_data.room_setpoints[room_name_alias].get(t)
                         if realset is not None:
-                            #print('override setpoint', room_name, 'at', t, 'from', target_t, 'to', realset)
                             target_t = realset
-                        else:
-                            #print('override missing for', room_name, 'at', t)
-                            pass
-                    else:
-                        #print('no overrides for', room_name_alias)
-                        pass
+                        realset_lagged = house_data.room_setpoints[room_name_alias].get(t-timedelta(minutes=radiator_response_time_slider.value))
+                        if realset_lagged is not None:
+                            target_t_lagged = realset_lagged
+                if phase == 1:
+                    setpoints_series[room_name].append(target_t)
+
                 verbose = room_name == 'Downstairs study'  and False
                 #print(room_name)
                 room_tot_flow = 0
-                
+                temperatures.setdefault(room_name, 20)
+                delta_t = temperatures['external'] - temperatures[room_name]
+
+                infiltration = room_data['air_change_an_hour'] * air_factor_slider.value * room_data['volume'] * delta_t
+                if False:
+                    print(f'{room_name} infiltration={infiltration} from delta T {delta_t}')
+                room_tot_flow += infiltration
                 if not (t.hour >= 6 and t.hour < 23):
-                    target_t -= night_set_back_slider.value
+                    target_t_lagged -= night_set_back_slider.value
                 for elem in room_data['elements']:
                     try:
                         id = elem['id']
@@ -191,29 +213,37 @@ def calculate_data():
                     elem_rec = data['elements'][id]
                     target = elem['boundary']
                     temperatures.setdefault(target, 20)
-                    temperatures.setdefault(room_name, 20)
                     other_temperature = temperatures.get(target)
                     room_temperature = temperatures.get(room_name)
                     delta_t =  other_temperature - room_temperature
-                    flow = delta_t * elem_rec['wk'] * interval_minutes / 60
+                    elem_type = elem_rec['type']
+                    elem_area = elem_rec['A']
+                    elem_type_rec = data['element_type'][elem_type]
+                    elem_type_u = elem_type_rec['uvalue']
+                    wk = elem_type_u * elem_area
+                    flow = delta_t * wk 
                     #print(f'  {elem_rec["width"]:.02f}*{elem_rec["height"]:.02f} {elem_rec["type"]} WK={elem_rec["wk"]:.1f} to {elem["boundary"]}@{other_temperature}dT{delta_t} {flow:.0f}W')
                     room_tot_flow += flow
+                if phase == 1:
+                    heat_loss_series[room_name].append(room_tot_flow * 60 / interval_minutes)
                 room_rad_output = 0
                 for rad in room_data['radiators']:
                     temperatures.setdefault(room_name, 21)
                     rad_delta_t = max(0, flow_t - temperatures[room_name])
-                    rad_power = (rad['heat50k'] *radiator_scales[room_name] * rad_delta_t / 50 if temperatures[room_name] < target_t else 0) * satisfaction 
-                    if verbose:
-                        print(f'  { room_name} rad {rad["name"]} rad delta T {rad_delta_t} power {rad_power:.0f}W')
+                    rad_power = (rad['heat50k'] *radiator_scales[room_name] * rad_delta_t / 50 if temperatures[room_name] < target_t_lagged else 0) * satisfaction 
+                    if False and room_name == 'Master suite':
+                        print(f'  { room_name} rad {rad["name"]} 50K {rad['heat50k']} rad delta T {rad_delta_t} scale { radiator_scales[room_name] } satisfaction { satisfaction } power {rad_power:.0f}W')
                     room_tot_flow += rad_power
                     room_rad_output += rad_power
                 house_rad_output += room_rad_output
+
                 if phase == 1:
+                    heat_gain_series[room_name].append(room_rad_output)
                     room_powers_series[room_name].append(room_rad_output)
-                    temp_change = interval_minutes *room_tot_flow / (room_data['area']*300) / 60
+                    temp_change = room_tot_flow / (room_data['area']*300)
                     orig_temp = temperatures[room_name]
                     temperatures[room_name] += temp_change
-                    if room_name_alias in house_data.room_temperatures:
+                    if real_temperatures_switch.active and room_name_alias in house_data.room_temperatures:
                         realtemp = house_data.room_temperatures[room_name_alias].get(t)
                         if realtemp is not None:
                             #print('real temp', realtemp, 'for',room_name, 'at', next_t, 'c/w caluclated', temperatures[room_name])
@@ -223,11 +253,6 @@ def calculate_data():
                             delta = actual_flow - room_tot_flow
                             discrepanices[room_name] = delta
                             temperatures[room_name] = realtemp
-                            
-                        else:
-                            #print('temp missing for', room_name, 'at', t)
-                            #print('have', house_data.room_temperatures[room_name].keys())
-                            pass
                     else:
                         #print('room missing for', room_name)
                         pass
@@ -261,21 +286,30 @@ def calculate_data():
         recs[k] = [x[k] for x in out_temperatures] 
     df = pd.DataFrame(recs)
     power_errors_df = pd.DataFrame(power_errors)
-    return room_powers_df, df, power_errors_df
+    heat_loss_df = pd.DataFrame( heat_loss_series, index=timestamps)
+    heat_gain_df = pd.DataFrame( heat_gain_series, index=timestamps)
+    setpoints_df = pd.DataFrame( setpoints_series, index=timestamps)
+    gas_use_series_df = pd.DataFrame( gas_use_series, index=timestamps)
+    return room_powers_df, df, power_errors_df, heat_loss_df, heat_gain_df, setpoints_df, gas_use_series_df
 
 def update_data(attr, old, new):
     do_callback()
 
 def do_update():
-    room_powers_series, df, power_errors_df = calculate_data()
+    room_powers_series, df, power_errors_df, heat_loss_df, heat_gain_df, setpoints_df, gas_use_series = calculate_data()
 
     # for ds, values in zip(ds_power, room_powers_series):
     #     ds.data = values
     room = list(data['rooms'].keys())[room_select.active]
-    room_temp_ds.data = dict(x=df['time'], y=df[room],)
+    room_temp_s.data = dict(x=df['time'], temperature=df[room], setpoint=setpoints_df[room])
     room_details_ds.data= dict(x=df['time'], y=power_errors_df.get(room, []), temperature = df['external'])
     #print(power_errors_df.to_string())
-    room_powers_ds.data = ColumnDataSource.from_df(room_powers_series)
+
+    d= {'index':df['time'], 'meters':gas_use_df[0]}
+    for room in data['rooms'].keys():
+        d[room] = room_powers_series[room]
+
+    room_powers_ds.data = d
     ds_outside.data = dict(x=df['time'], y=df['external'])
     subset = room_powers_series
     subsetsum = subset.sum(axis=1)
@@ -286,14 +320,16 @@ def do_update():
     print('100% percentile power', subsetsum.quantile(1.0))
     index_seconds = room_powers_series.index.astype(np.int64) // 1e9
     #print(index_seconds.head())
-
+    heat_loss_ds.data =dict(x=df['time'], y=-heat_loss_df[room])
+    heat_gain_ds.data =dict(x=df['time'], y=heat_gain_df[room], meters=gas_use_df[0])
     kwh_output =  scipy.integrate.trapezoid(subset.sum(axis=1), index_seconds) / 3.6e6
     kwh_input =  scipy.integrate.trapezoid(df['input_power'], index_seconds) / 3.6e6
-    print(f'total energy kwh output {kwh_output:.1f} input {kwh_input:.1f} efficency {100.0*kwh_output/ kwh_input:.0f}%')
-
-room_select = RadioGroup(labels=[str(x) for x in data['rooms'].keys()], active=0, inline=True)
+    metered = sum(gas_use_series[0])/1000
+    energy_use.text = f'total energy kwh output {kwh_output:.1f} metered {metered:.1f} input {kwh_input:.1f} efficency {100.0*kwh_output/ metered:.0f}%'
+room_select = RadioGroup(labels=[str(x) for x in data['rooms'].keys()], active=10, inline=True)
 power_slider =Slider(title='Heat source power', start=2000, end=40000, value=40000)
-flow_temperature_slider = Slider(title='Flow temperature (C)', start=25, end=65, value=50)
+air_factor_slider = Slider(title='Air infiltation factor', start=0, end=10, value=0.33, step=0.01)
+flow_temperature_slider = Slider(title='Flow temperature (C)', start=25, end=65, value=56)
 t0 = isoparse("2023-08-01T00:00:00Z")
 t1 = datetime.now()
 t0p = isoparse("2024-02-01T00:00:00Z")
@@ -301,34 +337,43 @@ t1p = isoparse("2024-02-03T23:59:00Z")
 day_range_slider = DateRangeSlider(width=800, start=t0, end=t1, value=(t0p,t1p))
 minimum_rad_density_slider = Slider(title='Minimum rad density', start=30, end=1000, value=5)
 weather_compensation_ratio_slider = Slider(title='Weather compensation ratio', start=0.1, end=1.5, value=0.6, step=0.05)
+radiator_response_time_slider = Slider(title='Radiator response time', start=0, end=60, value=interval_minutes*2, step=interval_minutes)
 night_set_back_slider = Slider(title="night set back", start=0, end=15, value=0)
-sliders = [ day_range_slider, power_slider, flow_temperature_slider, minimum_rad_density_slider, weather_compensation_ratio_slider, night_set_back_slider]
+sliders = [ day_range_slider, power_slider, air_factor_slider, flow_temperature_slider, minimum_rad_density_slider, weather_compensation_ratio_slider, night_set_back_slider, radiator_response_time_slider]
 real_temperatures_switch = Switch(active=True)
+real_setpoints_switch = Switch(active=True)
 weather_compensation_switch = Switch(active=False)
 width = Span(dimension="width", line_dash="dashed", line_width=2)
 height = Span(dimension="height", line_dash="dotted", line_width=2)
-room_powers_series, df, power_errors_df = calculate_data()
+room_powers_series, df, power_errors_df, heat_loss_df, heat_gain_df, setpoints_df, gas_use_df = calculate_data()
 room_colours = plasma(len(data['rooms']))
 axs = []
 
-for i in range(4):
-    s = figure(height=200, width=800, x_axis_type='datetime', tools='hover,xwheel_zoom')
+for i in range(6):
+    s = figure(height=400, width=800, x_axis_type='datetime', tools='hover,xwheel_zoom')
     s.add_tools(CrosshairTool(overlay=[width, height]))
-    s.sizing_mode = 'scale_width'
     axs.append(s)
 
-room_powers_ds = ColumnDataSource(room_powers_series)
+d= {'index':df['time'], 'meters':gas_use_df[0]}
+for room in data['rooms'].keys():
+    d[room] = room_powers_series[room]
+
+room_powers_ds = ColumnDataSource(d)
+axs[0].scatter(x='index', y='meters', source=room_powers_ds, color='black')
+
 axs[0].varea_stack(stackers=data['rooms'].keys(), x= 'index', source=room_powers_ds, color=room_colours)
+axs[0].scatter(x='x', y='meters', source=room_powers_ds, color='black')
+
 #axs[0].legend.location = 'bottom_right'
 axs[0].legend.background_fill_alpha = 0.5
 axs[0].title = 'Heat input, watts'
 
 colours = {'external':'blue'}
 room = list(data['rooms'].keys())[room_select.active]
-print('room', room)
 col = room_colours[room_select.active]
-r = axs[1].line(x=df['time'], y=df[room], legend_label=room, line_width=2, color=colours.get(room, col))
-room_temp_ds = r.data_source
+room_temp_s = ColumnDataSource(dict(x=df['time'], temperature=df[room], setpoint=setpoints_df[room]))
+axs[1].line(x='x', y='temperature',  source= room_temp_s,  line_width=2, color='blue')
+axs[1].line(x='x', y='setpoint',  source= room_temp_s,  line_width=2, color='red')
 axs[3].title = f'{room} power discrepanices'
 #axs[i+3].y_range = Range1d(10, 25)
 #axs[i+3].extra_y_ranges = {"power":Range1d(start=-2000, end=2000)}
@@ -343,24 +388,68 @@ axs[1].legend.background_fill_alpha = 0.5
 axs[1].yaxis.axis_label = 'Celsius'
 axs[1].title = f'{room} temperature'
 axs[1].legend.click_policy = 'mute'
+
 axs[2].title = 'Outside temperature'
 axs[2].yaxis.axis_label = 'Celsius'
+ds_outside = ColumnDataSource(dict(x=df['time'], y=df['external']))
+axs[2].line(x='x', y='y', source=ds_outside)
 
-ds_outside = axs[2].line(x=[],y=[]).data_source
+axs[5].yaxis.axis_label = 'Power'
+axs[5].title = 'Room heat loss'
+heat_loss_ds = ColumnDataSource(dict(x=df['time'], y=-heat_loss_df[room]))
+axs[5].line(x='x', y='y', source=heat_loss_ds)
+
+axs[4].yaxis.axis_label = 'Power'
+axs[4].title = 'Room heat gain'
+heat_gain_ds = ColumnDataSource(dict(x=df['time'], y=heat_gain_df
+                                     [room], meters=gas_use_df[0]))
+
 def change_room(attr, old, new):
     do_callback()
 
+def heat_pump_mode_callback():
+    weather_compensation_switch.active = True
+    power_slider.value = 12000
+    real_temperatures_switch.active = False
+    real_setpoints_switch.active = False
+    do_callback()
+
+def boiler_mode_callback():
+    weather_compensation_switch.active = False
+    power_slider.value = 40000
+    real_temperatures_switch.active = True
+    real_setpoints_switch.active = True
+    do_callback()
+
+def go_full_year():
+    day_range_slider.start = t0
+    day_range_slider.end = t1
+    do_callback()
+
 room_select.on_change('active', change_room)
-curdoc().add_root(gridplot([
-    [room_select], 
-    sliders[:2], 
-    sliders[2:4],
-    sliders[4:6], 
-    [Div(text='Use historical temperatures'), real_temperatures_switch],
-    [Div(text='Weather compensation'), weather_compensation_switch], 
-    axs[:2], 
-    axs[2:]
-]))
+energy_use = Div(text='energy use pending')
+boiler_button = Button(label='Switch to boiler settings (default)')
+boiler_button.on_click(boiler_mode_callback)
+heat_pump_mode_button = Button(label='Switch to heat pump settings')
+heat_pump_mode_button.on_click(heat_pump_mode_callback)
+full_year_button = Button(label='Switch to full year')
+full_year_button.on_click(go_full_year)
+curdoc().add_root(column([
+    row([room_select]), 
+    row(sliders[:4]), 
+    row(sliders[4:8]), 
+    row([
+        Div(text='Use historical temperatures'), real_temperatures_switch,
+        Div(text='Use historical setpoints'), real_setpoints_switch,
+        energy_use,
+        boiler_button,
+        heat_pump_mode_button,
+        full_year_button
+    ]),
+    row([Div(text='Weather compensation'), weather_compensation_switch]),     
+    row(axs[:2]),
+    row(axs[2:4]),
+    row(axs[4:6])]))
     
 #curdoc().add_periodic_callback(update_data, 10)
 idle_callbacks = []
@@ -375,5 +464,5 @@ def do_callback():
 
 for slider in sliders:
     slider.on_change('value', update_data)
-for switch in [weather_compensation_switch, real_temperatures_switch]:
+for switch in [weather_compensation_switch, real_temperatures_switch, real_setpoints_switch]:
     switch.on_change('active', update_data)
