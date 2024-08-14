@@ -64,7 +64,6 @@ from(bucket: "home-assistant")
             temps.append(t)
     room_temperatures = {}
     room_setpoints = {}
-    gas_readings = {}
     for col in query_api.query(f"""
 from(bucket: "56new")
   |> range(start:{start.strftime('%Y-%m-%dT%H:%M:%SZ')}, stop: {(start+timedelta(days=365)).strftime('%Y-%m-%dT%H:%M:%SZ')})
@@ -82,6 +81,7 @@ from(bucket: "56new")
             if row['_field'] == 'setpoint':
                 room_setpoints.setdefault(loc, {})
                 room_setpoints[loc][row['_time']] = row['_value']
+    gas_readings = {}
     for col in query_api.query(f"""
         from(bucket: "56new")
         |> range(start:{start.strftime('%Y-%m-%dT%H:%M:%SZ')}, stop: {(start+timedelta(days=365)).strftime('%Y-%m-%dT%H:%M:%SZ')})
@@ -89,10 +89,19 @@ from(bucket: "56new")
         |> filter(fn: (r) => r["_field"] == "usage")
         |> filter(fn: (r) => r["device_name"] == "utility meter")
         |> filter(fn: (r) => r["energy"] == "gas" )
-                               """)    :
+                               """):
         for row in col:
-            gas_readings[(row["_time"]+timedelta(minutes=5)).isoformat()] = row["_value"]
-    return HouseData(outside_temperatures=temps, room_setpoints=room_setpoints, room_temperatures=room_temperatures, gas_readings=gas_readings)
+            gas_readings[(row["_time"]+timedelta(minutes=5))] = row["_value"]
+    flow_temperatures = {}
+    for col in query_api.query(f"""
+        from(bucket: "56new")
+        |> range(start:{start.strftime('%Y-%m-%dT%H:%M:%SZ')}, stop: {(start+timedelta(days=365)).strftime('%Y-%m-%dT%H:%M:%SZ')})
+        |> filter(fn: (r) => r["location"] == "house_send")
+        |> aggregateWindow(every: 10m, fn: mean, createEmpty: false)
+        """):
+        for row in col:
+            flow_temperatures[(row["_time"])] = row['_value']
+    return HouseData(outside_temperatures=temps, room_setpoints=room_setpoints, room_temperatures=room_temperatures, gas_readings=gas_readings, flow_temperatures=flow_temperatures)
 
 
 def load_house_data() -> HouseData:
@@ -142,13 +151,21 @@ def calculate_data(room: str='') -> pd.DataFrame:
         while cursor+ 1< len(house_data.outside_temperatures) and house_data.outside_temperatures[cursor+1].time < t:
             cursor += 1
         next_t = t + timedelta(minutes=interval_minutes)
+        real_send_t = house_data.flow_temperatures.get(t)
+        if real_send_t is None:
+            real_send_t = flow_temperature_slider.value
+        else:
+            real_send_t = real_send_t + flow_temperature_reading_offset_slider.value
+        recs.setdefault('send_temperature', []).append(real_send_t)
         rec = house_data.outside_temperatures[cursor]
-        gas_reading = house_data.gas_readings.get(t.isoformat(), 0.0)
+        gas_reading = house_data.gas_readings.get(t, 0.0)
         recs['meters'].append(gas_reading)
         temperatures['external'] = rec.temperature
         recs['time'].append(t)
         satisfaction = 1.0
-        if weather_compensation_switch.active:
+        if real_temperatures_switch.active:
+            flow_t = real_send_t
+        elif weather_compensation_switch.active:
             flow_t = flow_temperature_slider.value + weather_compensation_ratio_slider.value * max(0, 17.0 - temperatures['external'])
             if False:
                 print('outside', temperatures['external'], 'so using weather compensation flow temperature', flow_t)
@@ -219,16 +236,25 @@ def calculate_data(room: str='') -> pd.DataFrame:
                     #print(f'  {elem_rec["width"]:.02f}*{elem_rec["height"]:.02f} {elem_rec["type"]} WK={elem_rec["wk"]:.1f} to {elem["boundary"]}@{other_temperature}dT{delta_t} {flow:.0f}W')
                     room_tot_flow += flow
                 if phase == 1:
-                    recs.setdefault(f'{room_name}_loss', []).append(room_tot_flow * 60 / interval_minutes)
-                room_rad_output = 0
+                    recs.setdefault(f'{room_name}_loss', []).append(-room_tot_flow * 60 / interval_minutes)
+                available_rad_power = 0
                 for rad in room_data['radiators']:
                     temperatures.setdefault(room_name, 21)
                     rad_delta_t = max(0, flow_t - temperatures[room_name])
-                    rad_power = (rad['heat50k'] *radiator_scales[room_name] * rad_delta_t / 50 if temperatures[room_name] < target_t_lagged else 0) * satisfaction 
+                    rad_power = (rad['heat50k'] *radiator_scales[room_name] * rad_delta_t / 50) * satisfaction 
                     if False and room_name == 'Master suite':
                         print(f'  { room_name} rad {rad["name"]} 50K {rad['heat50k']} rad delta T {rad_delta_t} scale { radiator_scales[room_name] } satisfaction { satisfaction } power {rad_power:.0f}W')
-                    room_tot_flow += rad_power
-                    room_rad_output += rad_power
+                    available_rad_power += rad_power
+                if temperatures[room_name] < target_t_lagged+0.5:
+                    # room too cold; rads run flat out
+                    room_rad_output= available_rad_power
+                elif temperatures[room_name] < target_t_lagged+1.5:
+                    # room about right; rads run at heat output
+                    room_rad_output = -room_tot_flow
+                else:
+                    # room too hot; rads off
+                    room_rad_output = 0
+                room_tot_flow += room_rad_output
                 house_rad_output += room_rad_output
 
                 if phase == 1:
@@ -305,7 +331,7 @@ def work_out_energy_use(df):
     kwh_output =  scipy.integrate.trapezoid(subset.sum(axis=1), index_seconds) / 3.6e6
     kwh_input =  scipy.integrate.trapezoid(df['input_power'], index_seconds) / 3.6e6
     metered = sum(df['meters'])/1000
-    return f'50th percentile power={subsetsum.quantile(0.5)} 90th percentile power={subsetsum.quantile(0.9)} 100th percentile power (max)={subsetsum.quantile(1.0)} total energy kwh output {kwh_output:.1f} metered {metered:.1f} input {kwh_input:.1f} efficency {100.0*kwh_output/ metered:.0f}%'
+    return f'50th percentile power={subsetsum.quantile(0.5)/1e3:.1f}kW 90th percentile power={subsetsum.quantile(0.9)/1e3:.1f}kW 100th percentile power (max)={subsetsum.quantile(1.0)/1e3:.1f}kW total energy kwh output {kwh_output:.1f} metered {metered:.1f} input {kwh_input:.1f} efficency {100.0*kwh_output/ metered:.0f}%'
 
 room_select = RadioGroup(labels=[str(x) for x in data['rooms'].keys()], active=10, inline=True)
 room = list(data['rooms'].keys())[room_select.active]
@@ -321,8 +347,9 @@ day_range_slider = DateRangeSlider(width=800, start=t0, end=t1, value=(t0p,t1p))
 minimum_rad_density_slider = Slider(title='Minimum rad density', start=30, end=1000, value=5)
 weather_compensation_ratio_slider = Slider(title='Weather compensation ratio', start=0.1, end=1.5, value=0.6, step=0.05)
 radiator_response_time_slider = Slider(title='Radiator response time', start=0, end=60, value=interval_minutes*2, step=interval_minutes)
+flow_temperature_reading_offset_slider = Slider(title='Correction factor for flow temperature readings', start=-20, end=50, value=30)
 night_set_back_slider = Slider(title="night set back", start=0, end=15, value=0)
-sliders = [ day_range_slider, power_slider, air_factor_slider, flow_temperature_slider, minimum_rad_density_slider, weather_compensation_ratio_slider, night_set_back_slider, radiator_response_time_slider]
+sliders = [ day_range_slider, power_slider, air_factor_slider, flow_temperature_slider, minimum_rad_density_slider, weather_compensation_ratio_slider, night_set_back_slider, radiator_response_time_slider, flow_temperature_reading_offset_slider]
 real_temperatures_switch = Switch(active=True)
 real_setpoints_switch = Switch(active=True)
 weather_compensation_switch = Switch(active=False)
@@ -330,21 +357,18 @@ width = Span(dimension="width", line_dash="dashed", line_width=2)
 height = Span(dimension="height", line_dash="dotted", line_width=2)
 df = calculate_data(room)
 energy_text = work_out_energy_use(df)
-print(df)
 room_colours = plasma(len(data['rooms']))
 axs = []
 
-for i in range(6):
+for i in range(7):
     s = figure(height=400, width=800, x_axis_type='datetime', tools='hover,xwheel_zoom')
     s.add_tools(CrosshairTool(overlay=[width, height]))
     axs.append(s)
 
 
 main_ds = ColumnDataSource(df)
-axs[0].scatter(x='index', y='meters', source=main_ds, color='black')
-
-axs[0].varea_stack(stackers=[x+'_gain' for x in data['rooms'].keys()], x= 'index', source=main_ds, color=room_colours)
-axs[0].scatter(x='index', y='meters', source=main_ds, color='black')
+axs[0].varea_stack(x= 'time', stackers=[x+'_gain' for x in data['rooms'].keys()],  source=main_ds, color=room_colours)
+axs[0].scatter(x='time', y='meters', source=main_ds, color='black')
 
 #axs[0].legend.location = 'bottom_right'
 axs[0].legend.background_fill_alpha = 0.5
@@ -371,7 +395,6 @@ axs[1].legend.click_policy = 'mute'
 
 axs[2].title = 'Outside temperature'
 axs[2].yaxis.axis_label = 'Celsius'
-ds_outside = ColumnDataSource(dict(x=df['time'], y=df['external_temperature']))
 axs[2].line(x='time', y='external_temperature', source=main_ds)
 
 axs[5].yaxis.axis_label = 'Power'
@@ -382,6 +405,9 @@ axs[4].yaxis.axis_label = 'Power'
 axs[4].title = 'Room heat gain'
 axs[4].line(x='time', y='gain_for_room', source=main_ds)
 
+axs[6].title = 'Flow temperature'
+axs[6].yaxis.axis_label = 'Celsius'
+axs[6].line(x='time', y='send_temperature', source=main_ds)
 def change_room(attr, old, new):
     do_callback()
 
@@ -415,19 +441,20 @@ full_year_button.on_click(go_full_year)
 layout = column([
     row([room_select]), 
     row(sliders[:4]), 
-    row(sliders[4:8]), 
+    row(sliders[4:9]), 
     row([
         Div(text='Use historical temperatures'), real_temperatures_switch,
         Div(text='Use historical setpoints'), real_setpoints_switch,
-        energy_use,
         boiler_button,
         heat_pump_mode_button,
         full_year_button
     ]),
+    row([energy_use]),
     row([Div(text='Weather compensation'), weather_compensation_switch]),     
     row(axs[:2]),
     row(axs[2:4]),
-    row(axs[4:6])])
+    row(axs[4:6]),
+    row(axs[6:8])])
 curdoc().add_root(layout)
     
 #curdoc().add_periodic_callback(update_data, 10)
