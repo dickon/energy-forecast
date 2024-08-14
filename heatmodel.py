@@ -116,7 +116,6 @@ with open('heatmodel.json', 'r') as f:
     data = json.load(f)
 
 def calculate_data():
-    timestamps = []
     out_temperatures = []
     power_errors = []
     temperatures = {}
@@ -143,7 +142,7 @@ def calculate_data():
     heat_loss_series = {k: [] for k in data['rooms'].keys()}
     heat_gain_series = {k: [] for k in data['rooms'].keys()}
     setpoints_series = {k: [] for k in data['rooms'].keys()}
-    recs = { "time":timestamps, "output_power":powers, "input_power":input_power_series,  "satisfactions":satisfactions}
+    recs = { "time":[], "output_power":powers, "input_power":input_power_series,  "satisfactions":satisfactions}
 
     gas_use_series = []
     while t < end_t:
@@ -154,7 +153,7 @@ def calculate_data():
         gas_reading = house_data.gas_readings.get(t.isoformat(), 0.0)
         gas_use_series.append(  gas_reading )
         temperatures['external'] = rec.temperature
-        timestamps.append(t)
+        recs['time'].append(t)
         satisfaction = 1.0
         if weather_compensation_switch.active:
             flow_t = flow_temperature_slider.value + weather_compensation_ratio_slider.value * max(0, 17.0 - temperatures['external'])
@@ -282,15 +281,15 @@ def calculate_data():
         assert house_rad_output >= 0
         powers.append(house_rad_output)
 
-    room_powers_df = pd.DataFrame( room_powers_series, index=timestamps )
+    room_powers_df = pd.DataFrame( room_powers_series, index=recs['time'] )
     for k in temperatures:
         recs[k] = [x[k] for x in out_temperatures] 
     df = pd.DataFrame(recs)
     power_errors_df = pd.DataFrame(power_errors)
-    heat_loss_df = pd.DataFrame( heat_loss_series, index=timestamps)
-    heat_gain_df = pd.DataFrame( heat_gain_series, index=timestamps)
-    setpoints_df = pd.DataFrame( setpoints_series, index=timestamps)
-    gas_use_series_df = pd.DataFrame( gas_use_series, index=timestamps)
+    heat_loss_df = pd.DataFrame( heat_loss_series, index=recs['time'])
+    heat_gain_df = pd.DataFrame( heat_gain_series, index=recs['time'])
+    setpoints_df = pd.DataFrame( setpoints_series, index=recs['time'])
+    gas_use_series_df = pd.DataFrame( gas_use_series, index=recs['time'])
     return room_powers_df, df, power_errors_df, heat_loss_df, heat_gain_df, setpoints_df, gas_use_series_df
 
 def update_data(attr, old, new):
@@ -406,6 +405,7 @@ axs[4].title = 'Room heat gain'
 heat_gain_ds_d = dict(x=df['time'], y=heat_gain_df[room], meters=gas_use_df[0])
 heat_gain_ds = ColumnDataSource(heat_gain_ds_d)
 axs[4].line(x='x', y='y', source=heat_gain_ds)
+
 def change_room(attr, old, new):
     do_callback()
 
