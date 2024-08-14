@@ -138,11 +138,13 @@ def calculate_data():
     powers = []
     satisfactions = []
     system_power = power_slider.value
-    room_powers_series = {k: [] for k in data['rooms'].keys()}
+    room_powers_series = {f'{k}_power': [] for k in data['rooms'].keys()}
     input_power_series = []
     heat_loss_series = {k: [] for k in data['rooms'].keys()}
     heat_gain_series = {k: [] for k in data['rooms'].keys()}
     setpoints_series = {k: [] for k in data['rooms'].keys()}
+    recs = { "time":timestamps, "output_power":powers, "input_power":input_power_series,  "satisfactions":satisfactions}
+
     gas_use_series = []
     while t < end_t:
         while cursor+ 1< len(house_data.outside_temperatures) and house_data.outside_temperatures[cursor+1].time < t:
@@ -239,7 +241,7 @@ def calculate_data():
 
                 if phase == 1:
                     heat_gain_series[room_name].append(room_rad_output)
-                    room_powers_series[room_name].append(room_rad_output)
+                    room_powers_series[f'{room_name}_power'].append(room_rad_output)
                     temp_change = room_tot_flow / (room_data['area']*300)
                     orig_temp = temperatures[room_name]
                     temperatures[room_name] += temp_change
@@ -279,7 +281,6 @@ def calculate_data():
         power_errors.append(dict(**discrepanices))
         assert house_rad_output >= 0
         powers.append(house_rad_output)
-    recs = { "time":timestamps, "output_power":powers, "input_power":input_power_series,  "satisfactions":satisfactions}
 
     room_powers_df = pd.DataFrame( room_powers_series, index=timestamps )
     for k in temperatures:
@@ -346,6 +347,7 @@ weather_compensation_switch = Switch(active=False)
 width = Span(dimension="width", line_dash="dashed", line_width=2)
 height = Span(dimension="height", line_dash="dotted", line_width=2)
 room_powers_series, df, power_errors_df, heat_loss_df, heat_gain_df, setpoints_df, gas_use_df = calculate_data()
+print(room_powers_series)
 room_colours = plasma(len(data['rooms']))
 axs = []
 
@@ -356,7 +358,7 @@ for i in range(6):
 
 d= {'index':df['time'], 'meters':gas_use_df[0]}
 for room in data['rooms'].keys():
-    d[room] = room_powers_series[room]
+    d[room] = room_powers_series[f'{room}_power']
 
 room_powers_ds = ColumnDataSource(d)
 axs[0].scatter(x='index', y='meters', source=room_powers_ds, color='black')
@@ -401,9 +403,9 @@ axs[5].line(x='x', y='y', source=heat_loss_ds)
 
 axs[4].yaxis.axis_label = 'Power'
 axs[4].title = 'Room heat gain'
-heat_gain_ds = ColumnDataSource(dict(x=df['time'], y=heat_gain_df
-                                     [room], meters=gas_use_df[0]))
-
+heat_gain_ds_d = dict(x=df['time'], y=heat_gain_df[room], meters=gas_use_df[0])
+heat_gain_ds = ColumnDataSource(heat_gain_ds_d)
+axs[4].line(x='x', y='y', source=heat_gain_ds)
 def change_room(attr, old, new):
     do_callback()
 
