@@ -114,9 +114,8 @@ house_data = load_house_data()
 with open('heatmodel.json', 'r') as f:
     data = json.load(f)
 
-def calculate_data():
+def calculate_data() -> pd.DataFrame:
     out_temperatures = []
-    power_errors = []
     temperatures = {}
     start_t = t = pytz.utc.localize(datetime.fromtimestamp(day_range_slider.value[0]/1000))
     end_t = pytz.utc.localize(datetime.fromtimestamp(day_range_slider.value[-1]/1000))
@@ -137,8 +136,6 @@ def calculate_data():
     satisfactions = []
     system_power = power_slider.value
     input_power_series = []
-    heat_gain_series = {k: [] for k in data['rooms'].keys()}
-    setpoints_series = {k: [] for k in data['rooms'].keys()}
     recs = { "time":[], "output_power":powers, "input_power":input_power_series,  "satisfactions":satisfactions, "meters":[]}
 
     while t < end_t:
@@ -188,7 +185,7 @@ def calculate_data():
                         if realset_lagged is not None:
                             target_t_lagged = realset_lagged
                 if phase == 1:
-                    setpoints_series[room_name].append(target_t)
+                    recs.setdefault(room_name+"_setpoint", []).append(target_t)
 
                 verbose = room_name == 'Downstairs study'  and False
                 #print(room_name)
@@ -235,8 +232,7 @@ def calculate_data():
                 house_rad_output += room_rad_output
 
                 if phase == 1:
-                    heat_gain_series[room_name].append(room_rad_output)
-                    recs.setdefault(room_name+'_power', []).append(room_rad_output)
+                    recs.setdefault(room_name+'_gain', []).append(room_rad_output)
                     temp_change = room_tot_flow / (room_data['area']*300)
                     orig_temp = temperatures[room_name]
                     temperatures[room_name] += temp_change
@@ -272,33 +268,28 @@ def calculate_data():
                     print(f'{t} power {house_rad_output/1e3:.1f}kW (ideal:{ideal_power_out/1e3:.1f}kW) inside={temperatures['Downstairs study']:.1f}C outside={temperatures['external']:.1f}C power={house_rad_output} satisfaction={satisfaction*100:.0f}%')
 
         t = next_t
-        out_temperatures.append( dict(**temperatures))
-        power_errors.append(dict(**discrepanices))
+        for k,v  in temperatures.items():
+            recs.setdefault(k+'_temperature', []).append(v)
+        for k in data['rooms'].keys():
+            recs.setdefault(k+'_power_error', []).append(discrepanices.get(k, 0))
         assert house_rad_output >= 0
         powers.append(house_rad_output)
 
-    for k in temperatures:
-        recs[k] = [x[k] for x in out_temperatures] 
-    df = pd.DataFrame(recs)
-    power_errors_df = pd.DataFrame(power_errors)
-    heat_gain_df = pd.DataFrame( heat_gain_series, index=recs['time'])
-    setpoints_df = pd.DataFrame( setpoints_series, index=recs['time'])
-    return df, power_errors_df, heat_gain_df, setpoints_df
+    return pd.DataFrame(recs)
 
 def update_data(attr, old, new):
     do_callback()
 
 def do_update():
-    df, power_errors_df,  heat_gain_df, setpoints_df  = calculate_data()
+    df = calculate_data()
 
     # for ds, values in zip(ds_power, room_powers_series):
     #     ds.data = values
     room = list(data['rooms'].keys())[room_select.active]
     room_temp_s.data = dict(x=df['time'], temperature=df[room], setpoint=setpoints_df[room])
-    room_details_ds.data= dict(x=df['time'], y=power_errors_df.get(room, []), temperature = df['external'])
     #print(power_errors_df.to_string())
 
-    room_powers_ds.data = df
+    main_ds.data = df
     ds_outside.data = dict(x=df['time'], y=df['external'])
     subset = room_powers_series
     subsetsum = subset.sum(axis=1)
@@ -335,7 +326,7 @@ real_setpoints_switch = Switch(active=True)
 weather_compensation_switch = Switch(active=False)
 width = Span(dimension="width", line_dash="dashed", line_width=2)
 height = Span(dimension="height", line_dash="dotted", line_width=2)
-df, power_errors_df, heat_gain_df, setpoints_df = calculate_data()
+df = calculate_data()
 print(df)
 print(df.keys())
 room_colours = plasma(len(data['rooms']))
@@ -347,11 +338,15 @@ for i in range(6):
     axs.append(s)
 
 df['heat_loss'] = df[room+'_loss']
-room_powers_ds = ColumnDataSource(df)
-axs[0].scatter(x='index', y='meters', source=room_powers_ds, color='black')
+df['heat_gain'] = df[room+'_gain']
+df['power_error'] = df[room+'_power_error']
+df['temperature'] = df[room+'_temperature']
+df['setpoint'] = df[room+'_setpoint']
+main_ds = ColumnDataSource(df)
+axs[0].scatter(x='index', y='meters', source=main_ds, color='black')
 
-axs[0].varea_stack(stackers=[x+'_power' for x in data['rooms'].keys()], x= 'index', source=room_powers_ds, color=room_colours)
-axs[0].scatter(x='x', y='meters', source=room_powers_ds, color='black')
+axs[0].varea_stack(stackers=[x+'_gain' for x in data['rooms'].keys()], x= 'index', source=main_ds, color=room_colours)
+axs[0].scatter(x='index', y='meters', source=main_ds, color='black')
 
 #axs[0].legend.location = 'bottom_right'
 axs[0].legend.background_fill_alpha = 0.5
@@ -360,16 +355,14 @@ axs[0].title = 'Heat input, watts'
 colours = {'external':'blue'}
 room = list(data['rooms'].keys())[room_select.active]
 col = room_colours[room_select.active]
-room_temp_s = ColumnDataSource(dict(x=df['time'], temperature=df[room], setpoint=setpoints_df[room]))
-axs[1].line(x='x', y='temperature',  source= room_temp_s,  line_width=2, color='blue')
-axs[1].line(x='x', y='setpoint',  source= room_temp_s,  line_width=2, color='red')
+axs[1].line(x='time', y='temperature',  source= main_ds,  line_width=2, color='blue')
+axs[1].line(x='time', y='setpoint',  source=main_ds,  line_width=2, color='red')
 axs[3].title = f'{room} power discrepanices'
 #axs[i+3].y_range = Range1d(10, 25)
 #axs[i+3].extra_y_ranges = {"power":Range1d(start=-2000, end=2000)}
 #axs[i+3].line(x=df['time'], y=df[room], color='black')
-room_details_ds = ColumnDataSource(dict(x=df['time'], y=power_errors_df.get(room, []), temperature = df['external']))
 colors = linear_cmap(field_name='temperature', palette='Viridis256', low=-5, high=30)
-axs[3].scatter(x='x', y='y',  color=colors, source=room_details_ds)
+axs[3].scatter(x='time', y='power_error',  color=colors, source=main_ds)
 #axs[i+3].add_layout(LinearAxis(y_range_name='power'), 'right')
 axs[0].yaxis.axis_label = "Watts"
 axs[1].legend.location = 'bottom_right'
@@ -380,18 +373,16 @@ axs[1].legend.click_policy = 'mute'
 
 axs[2].title = 'Outside temperature'
 axs[2].yaxis.axis_label = 'Celsius'
-ds_outside = ColumnDataSource(dict(x=df['time'], y=df['external']))
-axs[2].line(x='x', y='y', source=ds_outside)
+ds_outside = ColumnDataSource(dict(x=df['time'], y=df['external_temperature']))
+axs[2].line(x='time', y='external_temperature', source=main_ds)
 
 axs[5].yaxis.axis_label = 'Power'
 axs[5].title = 'Room heat loss'
-axs[5].line(x='time', y='heat_loss', source=room_powers_ds)
+axs[5].line(x='time', y='heat_loss', source=main_ds)
 
 axs[4].yaxis.axis_label = 'Power'
 axs[4].title = 'Room heat gain'
-heat_gain_ds_d = dict(x=df['time'], y=heat_gain_df[room])
-heat_gain_ds = ColumnDataSource(heat_gain_ds_d)
-axs[4].line(x='x', y='y', source=heat_gain_ds)
+axs[4].line(x='time', y='heat_gain', source=main_ds)
 
 def change_room(attr, old, new):
     do_callback()
