@@ -140,16 +140,15 @@ def calculate_data():
     input_power_series = []
     heat_gain_series = {k: [] for k in data['rooms'].keys()}
     setpoints_series = {k: [] for k in data['rooms'].keys()}
-    recs = { "time":[], "output_power":powers, "input_power":input_power_series,  "satisfactions":satisfactions}
+    recs = { "time":[], "output_power":powers, "input_power":input_power_series,  "satisfactions":satisfactions, "meters":[]}
 
-    gas_use_series = []
     while t < end_t:
         while cursor+ 1< len(house_data.outside_temperatures) and house_data.outside_temperatures[cursor+1].time < t:
             cursor += 1
         next_t = t + timedelta(minutes=interval_minutes)
         rec = house_data.outside_temperatures[cursor]
         gas_reading = house_data.gas_readings.get(t.isoformat(), 0.0)
-        gas_use_series.append(  gas_reading )
+        recs['meters'].append(gas_reading)
         temperatures['external'] = rec.temperature
         recs['time'].append(t)
         satisfaction = 1.0
@@ -285,7 +284,7 @@ def calculate_data():
     power_errors_df = pd.DataFrame(power_errors)
     heat_gain_df = pd.DataFrame( heat_gain_series, index=recs['time'])
     setpoints_df = pd.DataFrame( setpoints_series, index=recs['time'])
-    gas_use_series_df = pd.DataFrame( gas_use_series, index=recs['time'])
+    gas_use_series_df = pd.DataFrame( recs['meters'], index=recs['time'])
     return df, power_errors_df, heat_gain_df, setpoints_df, gas_use_series_df
 
 def update_data(attr, old, new):
@@ -353,12 +352,8 @@ for i in range(6):
     s.add_tools(CrosshairTool(overlay=[width, height]))
     axs.append(s)
 
-d= {'index':df['time'], 'meters':gas_use_df[0]}
-for k in df.keys():
-    d[k] = df[k]
-d['heat_loss'] = df[room+'_loss']
-pprint.pprint(d)
-room_powers_ds = ColumnDataSource(d)
+df['heat_loss'] = df[room+'_loss']
+room_powers_ds = ColumnDataSource(df)
 axs[0].scatter(x='index', y='meters', source=room_powers_ds, color='black')
 
 axs[0].varea_stack(stackers=[x+'_power' for x in data['rooms'].keys()], x= 'index', source=room_powers_ds, color=room_colours)
