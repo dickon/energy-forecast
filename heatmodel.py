@@ -38,7 +38,6 @@ class InfluxConfig(NamedTuple):
     bucket: str
     org: str
 
-
 site = json.load(open(os.path.expanduser("~/site.json")))
 def fetch_house_data() -> HouseData:
     influxConfig = InfluxConfig(**site["influx"])
@@ -284,14 +283,13 @@ def calculate_data():
     power_errors_df = pd.DataFrame(power_errors)
     heat_gain_df = pd.DataFrame( heat_gain_series, index=recs['time'])
     setpoints_df = pd.DataFrame( setpoints_series, index=recs['time'])
-    gas_use_series_df = pd.DataFrame( recs['meters'], index=recs['time'])
-    return df, power_errors_df, heat_gain_df, setpoints_df, gas_use_series_df
+    return df, power_errors_df, heat_gain_df, setpoints_df
 
 def update_data(attr, old, new):
     do_callback()
 
 def do_update():
-    df, power_errors_df,  heat_gain_df, setpoints_df, gas_use_series = calculate_data()
+    df, power_errors_df,  heat_gain_df, setpoints_df  = calculate_data()
 
     # for ds, values in zip(ds_power, room_powers_series):
     #     ds.data = values
@@ -300,11 +298,7 @@ def do_update():
     room_details_ds.data= dict(x=df['time'], y=power_errors_df.get(room, []), temperature = df['external'])
     #print(power_errors_df.to_string())
 
-    d= {'index':df['time'], 'meters':gas_use_df[0]}
-    for room in data['rooms'].keys():
-        d[room] = room_powers_series[room]
-
-    room_powers_ds.data = d
+    room_powers_ds.data = df
     ds_outside.data = dict(x=df['time'], y=df['external'])
     subset = room_powers_series
     subsetsum = subset.sum(axis=1)
@@ -315,10 +309,10 @@ def do_update():
     print('100% percentile power', subsetsum.quantile(1.0))
     index_seconds = room_powers_series.index.astype(np.int64) // 1e9
     #print(index_seconds.head())
-    heat_gain_ds.data =dict(x=df['time'], y=heat_gain_df[room], meters=gas_use_df[0])
+    heat_gain_ds.data =dict(x=df['time'], y=heat_gain_df[room])
     kwh_output =  scipy.integrate.trapezoid(subset.sum(axis=1), index_seconds) / 3.6e6
     kwh_input =  scipy.integrate.trapezoid(df['input_power'], index_seconds) / 3.6e6
-    metered = sum(gas_use_series[0])/1000
+    metered = sum(df['meters'])/1000
     energy_use.text = f'total energy kwh output {kwh_output:.1f} metered {metered:.1f} input {kwh_input:.1f} efficency {100.0*kwh_output/ metered:.0f}%'
 room_select = RadioGroup(labels=[str(x) for x in data['rooms'].keys()], active=10, inline=True)
 room = list(data['rooms'].keys())[room_select.active]
@@ -341,7 +335,7 @@ real_setpoints_switch = Switch(active=True)
 weather_compensation_switch = Switch(active=False)
 width = Span(dimension="width", line_dash="dashed", line_width=2)
 height = Span(dimension="height", line_dash="dotted", line_width=2)
-df, power_errors_df, heat_gain_df, setpoints_df, gas_use_df = calculate_data()
+df, power_errors_df, heat_gain_df, setpoints_df = calculate_data()
 print(df)
 print(df.keys())
 room_colours = plasma(len(data['rooms']))
@@ -395,7 +389,7 @@ axs[5].line(x='time', y='heat_loss', source=room_powers_ds)
 
 axs[4].yaxis.axis_label = 'Power'
 axs[4].title = 'Room heat gain'
-heat_gain_ds_d = dict(x=df['time'], y=heat_gain_df[room], meters=gas_use_df[0])
+heat_gain_ds_d = dict(x=df['time'], y=heat_gain_df[room])
 heat_gain_ds = ColumnDataSource(heat_gain_ds_d)
 axs[4].line(x='x', y='y', source=heat_gain_ds)
 
