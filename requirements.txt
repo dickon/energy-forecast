@@ -4,3 +4,4 @@ numpy
 bokeh
 scipy
 pytz
+selenium
