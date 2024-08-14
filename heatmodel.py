@@ -137,9 +137,7 @@ def calculate_data():
     powers = []
     satisfactions = []
     system_power = power_slider.value
-    room_powers_series = {f'{k}_power': [] for k in data['rooms'].keys()}
     input_power_series = []
-    heat_loss_series = {k: [] for k in data['rooms'].keys()}
     heat_gain_series = {k: [] for k in data['rooms'].keys()}
     setpoints_series = {k: [] for k in data['rooms'].keys()}
     recs = { "time":[], "output_power":powers, "input_power":input_power_series,  "satisfactions":satisfactions}
@@ -226,7 +224,7 @@ def calculate_data():
                     #print(f'  {elem_rec["width"]:.02f}*{elem_rec["height"]:.02f} {elem_rec["type"]} WK={elem_rec["wk"]:.1f} to {elem["boundary"]}@{other_temperature}dT{delta_t} {flow:.0f}W')
                     room_tot_flow += flow
                 if phase == 1:
-                    heat_loss_series[room_name].append(room_tot_flow * 60 / interval_minutes)
+                    recs.setdefault(f'{room_name}_loss', []).append(room_tot_flow * 60 / interval_minutes)
                 room_rad_output = 0
                 for rad in room_data['radiators']:
                     temperatures.setdefault(room_name, 21)
@@ -240,7 +238,7 @@ def calculate_data():
 
                 if phase == 1:
                     heat_gain_series[room_name].append(room_rad_output)
-                    room_powers_series[f'{room_name}_power'].append(room_rad_output)
+                    recs.setdefault(room_name+'_power', []).append(room_rad_output)
                     temp_change = room_tot_flow / (room_data['area']*300)
                     orig_temp = temperatures[room_name]
                     temperatures[room_name] += temp_change
@@ -281,22 +279,20 @@ def calculate_data():
         assert house_rad_output >= 0
         powers.append(house_rad_output)
 
-    room_powers_df = pd.DataFrame( room_powers_series, index=recs['time'] )
     for k in temperatures:
         recs[k] = [x[k] for x in out_temperatures] 
     df = pd.DataFrame(recs)
     power_errors_df = pd.DataFrame(power_errors)
-    heat_loss_df = pd.DataFrame( heat_loss_series, index=recs['time'])
     heat_gain_df = pd.DataFrame( heat_gain_series, index=recs['time'])
     setpoints_df = pd.DataFrame( setpoints_series, index=recs['time'])
     gas_use_series_df = pd.DataFrame( gas_use_series, index=recs['time'])
-    return room_powers_df, df, power_errors_df, heat_loss_df, heat_gain_df, setpoints_df, gas_use_series_df
+    return df, power_errors_df, heat_gain_df, setpoints_df, gas_use_series_df
 
 def update_data(attr, old, new):
     do_callback()
 
 def do_update():
-    room_powers_series, df, power_errors_df, heat_loss_df, heat_gain_df, setpoints_df, gas_use_series = calculate_data()
+    df, power_errors_df,  heat_gain_df, setpoints_df, gas_use_series = calculate_data()
 
     # for ds, values in zip(ds_power, room_powers_series):
     #     ds.data = values
@@ -320,13 +316,14 @@ def do_update():
     print('100% percentile power', subsetsum.quantile(1.0))
     index_seconds = room_powers_series.index.astype(np.int64) // 1e9
     #print(index_seconds.head())
-    heat_loss_ds.data =dict(x=df['time'], y=-heat_loss_df[room])
     heat_gain_ds.data =dict(x=df['time'], y=heat_gain_df[room], meters=gas_use_df[0])
     kwh_output =  scipy.integrate.trapezoid(subset.sum(axis=1), index_seconds) / 3.6e6
     kwh_input =  scipy.integrate.trapezoid(df['input_power'], index_seconds) / 3.6e6
     metered = sum(gas_use_series[0])/1000
     energy_use.text = f'total energy kwh output {kwh_output:.1f} metered {metered:.1f} input {kwh_input:.1f} efficency {100.0*kwh_output/ metered:.0f}%'
 room_select = RadioGroup(labels=[str(x) for x in data['rooms'].keys()], active=10, inline=True)
+room = list(data['rooms'].keys())[room_select.active]
+    
 power_slider =Slider(title='Heat source power', start=2000, end=40000, value=40000)
 air_factor_slider = Slider(title='Air infiltation factor', start=0, end=10, value=0.33, step=0.01)
 flow_temperature_slider = Slider(title='Flow temperature (C)', start=25, end=65, value=56)
@@ -345,8 +342,9 @@ real_setpoints_switch = Switch(active=True)
 weather_compensation_switch = Switch(active=False)
 width = Span(dimension="width", line_dash="dashed", line_width=2)
 height = Span(dimension="height", line_dash="dotted", line_width=2)
-room_powers_series, df, power_errors_df, heat_loss_df, heat_gain_df, setpoints_df, gas_use_df = calculate_data()
-print(room_powers_series)
+df, power_errors_df, heat_gain_df, setpoints_df, gas_use_df = calculate_data()
+print(df)
+print(df.keys())
 room_colours = plasma(len(data['rooms']))
 axs = []
 
@@ -356,13 +354,14 @@ for i in range(6):
     axs.append(s)
 
 d= {'index':df['time'], 'meters':gas_use_df[0]}
-for room in data['rooms'].keys():
-    d[room] = room_powers_series[f'{room}_power']
-
+for k in df.keys():
+    d[k] = df[k]
+d['heat_loss'] = df[room+'_loss']
+pprint.pprint(d)
 room_powers_ds = ColumnDataSource(d)
 axs[0].scatter(x='index', y='meters', source=room_powers_ds, color='black')
 
-axs[0].varea_stack(stackers=data['rooms'].keys(), x= 'index', source=room_powers_ds, color=room_colours)
+axs[0].varea_stack(stackers=[x+'_power' for x in data['rooms'].keys()], x= 'index', source=room_powers_ds, color=room_colours)
 axs[0].scatter(x='x', y='meters', source=room_powers_ds, color='black')
 
 #axs[0].legend.location = 'bottom_right'
@@ -397,8 +396,7 @@ axs[2].line(x='x', y='y', source=ds_outside)
 
 axs[5].yaxis.axis_label = 'Power'
 axs[5].title = 'Room heat loss'
-heat_loss_ds = ColumnDataSource(dict(x=df['time'], y=-heat_loss_df[room]))
-axs[5].line(x='x', y='y', source=heat_loss_ds)
+axs[5].line(x='time', y='heat_loss', source=room_powers_ds)
 
 axs[4].yaxis.axis_label = 'Power'
 axs[4].title = 'Room heat gain'
