@@ -114,7 +114,7 @@ house_data = load_house_data()
 with open('heatmodel.json', 'r') as f:
     data = json.load(f)
 
-def calculate_data() -> pd.DataFrame:
+def calculate_data(room: str='') -> pd.DataFrame:
     out_temperatures = []
     temperatures = {}
     start_t = t = pytz.utc.localize(datetime.fromtimestamp(day_range_slider.value[0]/1000))
@@ -275,36 +275,38 @@ def calculate_data() -> pd.DataFrame:
         assert house_rad_output >= 0
         powers.append(house_rad_output)
 
-    return pd.DataFrame(recs)
+    df = pd.DataFrame(recs)
+    df['loss_for_room'] = df[room+'_loss']
+    df['gain_for_room'] = df[room+'_gain']
+    df['power_error'] = df[room+'_power_error']
+    df['temperature'] = df[room+'_temperature']
+    df['setpoint'] = df[room+'_setpoint']
+    return df
+
 
 def update_data(attr, old, new):
     do_callback()
 
 def do_update():
-    df = calculate_data()
-
-    # for ds, values in zip(ds_power, room_powers_series):
-    #     ds.data = values
     room = list(data['rooms'].keys())[room_select.active]
-    room_temp_s.data = dict(x=df['time'], temperature=df[room], setpoint=setpoints_df[room])
-    #print(power_errors_df.to_string())
-
+    df = calculate_data(room)
     main_ds.data = df
-    ds_outside.data = dict(x=df['time'], y=df['external'])
-    subset = room_powers_series
-    subsetsum = subset.sum(axis=1)
+    energy_use.text = work_out_energy_use(df)
     axs[1].title.text = f'{room} temperature'
     axs[3].title.text = f'{room} power discrepanices'
-    print('50% percentile power', subsetsum.quantile(0.5))
-    print('90% percentile power', subsetsum.quantile(0.9))
-    print('100% percentile power', subsetsum.quantile(1.0))
-    index_seconds = room_powers_series.index.astype(np.int64) // 1e9
+
+def work_out_energy_use(df):
+    subset = df.filter(regex=r'.*_gain')
+    print(subset)
+    subsetsum = subset.sum(axis=1)
+    index_seconds = df['time'].astype(np.int64) // 1e9
     #print(index_seconds.head())
-    heat_gain_ds.data =dict(x=df['time'], y=heat_gain_df[room])
+    # heat_gain_ds.data =dict(x=df['time'], y=heat_gain_df[room])
     kwh_output =  scipy.integrate.trapezoid(subset.sum(axis=1), index_seconds) / 3.6e6
     kwh_input =  scipy.integrate.trapezoid(df['input_power'], index_seconds) / 3.6e6
     metered = sum(df['meters'])/1000
-    energy_use.text = f'total energy kwh output {kwh_output:.1f} metered {metered:.1f} input {kwh_input:.1f} efficency {100.0*kwh_output/ metered:.0f}%'
+    return f'50th percentile power={subsetsum.quantile(0.5)} 90th percentile power={subsetsum.quantile(0.9)} 100th percentile power (max)={subsetsum.quantile(1.0)} total energy kwh output {kwh_output:.1f} metered {metered:.1f} input {kwh_input:.1f} efficency {100.0*kwh_output/ metered:.0f}%'
+
 room_select = RadioGroup(labels=[str(x) for x in data['rooms'].keys()], active=10, inline=True)
 room = list(data['rooms'].keys())[room_select.active]
     
@@ -326,9 +328,9 @@ real_setpoints_switch = Switch(active=True)
 weather_compensation_switch = Switch(active=False)
 width = Span(dimension="width", line_dash="dashed", line_width=2)
 height = Span(dimension="height", line_dash="dotted", line_width=2)
-df = calculate_data()
+df = calculate_data(room)
+energy_text = work_out_energy_use(df)
 print(df)
-print(df.keys())
 room_colours = plasma(len(data['rooms']))
 axs = []
 
@@ -337,11 +339,7 @@ for i in range(6):
     s.add_tools(CrosshairTool(overlay=[width, height]))
     axs.append(s)
 
-df['heat_loss'] = df[room+'_loss']
-df['heat_gain'] = df[room+'_gain']
-df['power_error'] = df[room+'_power_error']
-df['temperature'] = df[room+'_temperature']
-df['setpoint'] = df[room+'_setpoint']
+
 main_ds = ColumnDataSource(df)
 axs[0].scatter(x='index', y='meters', source=main_ds, color='black')
 
@@ -378,11 +376,11 @@ axs[2].line(x='time', y='external_temperature', source=main_ds)
 
 axs[5].yaxis.axis_label = 'Power'
 axs[5].title = 'Room heat loss'
-axs[5].line(x='time', y='heat_loss', source=main_ds)
+axs[5].line(x='time', y='loss_for_room', source=main_ds)
 
 axs[4].yaxis.axis_label = 'Power'
 axs[4].title = 'Room heat gain'
-axs[4].line(x='time', y='heat_gain', source=main_ds)
+axs[4].line(x='time', y='gain_for_room', source=main_ds)
 
 def change_room(attr, old, new):
     do_callback()
@@ -407,7 +405,7 @@ def go_full_year():
     do_callback()
 
 room_select.on_change('active', change_room)
-energy_use = Div(text='energy use pending')
+energy_use = Div(text=energy_text)
 boiler_button = Button(label='Switch to boiler settings (default)')
 boiler_button.on_click(boiler_mode_callback)
 heat_pump_mode_button = Button(label='Switch to heat pump settings')
