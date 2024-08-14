@@ -7,7 +7,7 @@ from influxdb_client.client.write_api import SYNCHRONOUS
 import numpy as np
 import pandas as pd
 from bokeh.layouts import column, row, layout, gridplot
-from bokeh.plotting import figure, show
+from bokeh.plotting import figure, show, output_file
 from bokeh.models import Slider, Switch, Div, CrosshairTool, Span, HoverTool, ColumnDataSource, Range1d, LinearAxis,  DateRangeSlider, RadioGroup, Button
 from bokeh.io import curdoc
 from structures import HouseData, TemperaturePoint
@@ -434,7 +434,7 @@ heat_pump_mode_button = Button(label='Switch to heat pump settings')
 heat_pump_mode_button.on_click(heat_pump_mode_callback)
 full_year_button = Button(label='Switch to full year')
 full_year_button.on_click(go_full_year)
-curdoc().add_root(column([
+layout = column([
     row([room_select]), 
     row(sliders[:4]), 
     row(sliders[4:8]), 
@@ -449,7 +449,8 @@ curdoc().add_root(column([
     row([Div(text='Weather compensation'), weather_compensation_switch]),     
     row(axs[:2]),
     row(axs[2:4]),
-    row(axs[4:6])]))
+    row(axs[4:6])])
+curdoc().add_root(layout)
     
 #curdoc().add_periodic_callback(update_data, 10)
 idle_callbacks = []
@@ -466,3 +467,7 @@ for slider in sliders:
     slider.on_change('value', update_data)
 for switch in [weather_compensation_switch, real_temperatures_switch, real_setpoints_switch]:
     switch.on_change('active', update_data)
+
+if __name__ == '__main__':
+    output_file('heatmodel.html')
+    show(layout)
