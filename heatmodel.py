@@ -248,20 +248,20 @@ def calculate_data(room: str='') -> pd.DataFrame:
                     if False and room_name == room:
                         print(f'  { room_name} rad {rad["name"]} 50K {rad['heat50k']} rad delta T {rad_delta_t} scale { radiator_scales[room_name] } satisfaction { satisfaction } power {rad_watts:.0f}W')
                     available_rad_watts += rad_watts
-                if temperatures[room_name] < target_t_lagged+0.5:
+                if temperatures[room_name] < target_t_lagged-0.25:
                     # room too cold; rads run flat out
-                    room_rad_output= available_rad_watts
+                    room_rad_watts= available_rad_watts
                 elif temperatures[room_name] < target_t_lagged+1.5:
                     # room about right; rads run at heat output
-                    room_rad_output = -room_tot_flow_watts
+                    room_rad_watts = -room_tot_flow_watts
                 else:
                     # room too hot; rads off
-                    room_rad_output = 0
-                room_tot_flow_watts += room_rad_output
-                house_rad_output_watts += room_rad_output
+                    room_rad_watts = 0
+                room_tot_flow_watts += room_rad_watts
+                house_rad_output_watts += room_rad_watts
 
                 if phase == 1:
-                    recs.setdefault(room_name+'_gain', []).append(room_rad_output)
+                    recs.setdefault(room_name+'_gain', []).append(room_rad_watts)
                     temp_change = room_tot_flow_watts * interval_minutes / 60 / (room_data['volume']*temperature_change_factor_slider.value)
                     orig_temp = temperatures[room_name]
                     temperatures[room_name] += temp_change
@@ -336,7 +336,7 @@ def work_out_energy_use(df):
     metered = sum(df['meters'])/1000
     return f'50th percentile power={subsetsum.quantile(0.5)/1e3:.1f}kW 90th percentile power={subsetsum.quantile(0.9)/1e3:.1f}kW 100th percentile power (max)={subsetsum.quantile(1.0)/1e3:.1f}kW total energy kwh output {kwh_output:.1f} metered {metered:.1f} input {kwh_input:.1f} efficency {100.0*kwh_output/ metered:.0f}%'
 
-room_select = RadioGroup(labels=[str(x) for x in data['rooms'].keys()], active=10, inline=True)
+room_select = RadioGroup(labels=[str(x) for x in data['rooms'].keys()], active=0, inline=True)
 room = list(data['rooms'].keys())[room_select.active]
     
 power_slider =Slider(title='Heat source power', start=2000, end=40000, value=40000)
