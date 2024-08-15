@@ -13,6 +13,7 @@ from bokeh.io import curdoc
 from structures import HouseData, TemperaturePoint
 from bokeh.palettes import Category20, magma, plasma
 from bokeh.transform import linear_cmap
+from math import ceil
 import scipy.integrate
 import pytz
 
@@ -37,6 +38,9 @@ class InfluxConfig(NamedTuple):
     server: str
     bucket: str
     org: str
+
+def row_split(elements, count=3):
+    return list([row(elements[i*count:(i+1)*count]) for i in range(ceil(len(elements)/count)) ])
 
 site = json.load(open(os.path.expanduser("~/site.json")))
 def fetch_house_data() -> HouseData:
@@ -151,26 +155,24 @@ def calculate_data(room: str='') -> pd.DataFrame:
         while cursor+ 1< len(house_data.outside_temperatures) and house_data.outside_temperatures[cursor+1].time < t:
             cursor += 1
         next_t = t + timedelta(minutes=interval_minutes)
-        real_send_t = house_data.flow_temperatures.get(t)
-        if real_send_t is None:
-            real_send_t = flow_temperature_slider.value
+        flow_t = house_data.flow_temperatures.get(t)
+        if flow_t is None:
+            flow_t = flow_temperature_slider.value
         else:
-            real_send_t = real_send_t + flow_temperature_reading_offset_slider.value
-        recs.setdefault('send_temperature', []).append(real_send_t)
+            flow_t = flow_t + flow_temperature_reading_offset_slider.value
         rec = house_data.outside_temperatures[cursor]
         gas_reading = house_data.gas_readings.get(t, 0.0)
         recs['meters'].append(gas_reading)
         temperatures['external'] = rec.temperature
         recs['time'].append(t)
         satisfaction = 1.0
-        if real_temperatures_switch.active:
-            flow_t = real_send_t
-        elif weather_compensation_switch.active:
-            flow_t = flow_temperature_slider.value + weather_compensation_ratio_slider.value * max(0, 17.0 - temperatures['external'])
-            if False:
-                print('outside', temperatures['external'], 'so using weather compensation flow temperature', flow_t)
-        else:
-            flow_t = flow_temperature_slider.value
+        if not real_temperatures_switch.active:
+            if weather_compensation_switch.active:
+                flow_t = flow_temperature_slider.value + weather_compensation_ratio_slider.value * max(0, weather_compensation_threshold_slider.value - temperatures['external']) - weather_compensation_ratio_slider.value / 2
+            else:
+                flow_t = flow_temperature_slider.value
+        recs.setdefault('send_temperature', []).append(flow_t)
+
         return_t = flow_t - 20.0
         if return_t < 27: efficiency = 0.97
         elif return_t < 32: efficiency = 0.96
@@ -186,7 +188,7 @@ def calculate_data(room: str='') -> pd.DataFrame:
         for phase in [0,1]:
             house_rad_output_watts = 0
             for room_index, (room_name, room_data) in enumerate(data['rooms'].items()):
-                target_t_lagged = target_t = (21.5 if room_name != 'Master suite' else 19)
+                target_t_lagged = target_t = (setpoint_slider.value if room_name != 'Master suite' else setpoint_slider.value)
                 room_name_alias = room_name
                 if room_name_alias == 'Medal area' or room_name_alias == 'Downstairs toilet' or room_name_alias == 'Dining room': 
                     room_name_alias = 'Lounge'
@@ -195,10 +197,10 @@ def calculate_data(room: str='') -> pd.DataFrame:
 
                 if real_setpoints_switch.active:
                     if room_name_alias in house_data.room_setpoints:
-                        realset = house_data.room_setpoints[room_name_alias].get(t)
+                        realset = house_data.room_setpoints[room_name_alias].get(t) + setpoint_delta_slider.value
                         if realset is not None:
                             target_t = realset
-                        realset_lagged = house_data.room_setpoints[room_name_alias].get(t-timedelta(minutes=radiator_response_time_slider.value))
+                        realset_lagged = house_data.room_setpoints[room_name_alias].get(t-timedelta(minutes=radiator_response_time_slider.value)) + setpoint_delta_slider.value
                         if realset_lagged is not None:
                             target_t_lagged = realset_lagged
                 if phase == 1:
@@ -251,13 +253,14 @@ def calculate_data(room: str='') -> pd.DataFrame:
                 if temperatures[room_name] < target_t_lagged-0.25:
                     # room too cold; rads run flat out
                     room_rad_watts= available_rad_watts
-                elif temperatures[room_name] < target_t_lagged+1.5:
+                elif temperatures[room_name] < target_t_lagged+0.25:
                     # room about right; rads run at heat output
-                    room_rad_watts = -room_tot_flow_watts
+                    room_rad_watts = min(available_rad_watts, max(-room_tot_flow_watts, 0))
                 else:
                     # room too hot; rads off
                     room_rad_watts = 0
                 room_tot_flow_watts += room_rad_watts
+                
                 house_rad_output_watts += room_rad_watts
 
                 if phase == 1:
@@ -348,12 +351,29 @@ t0p = isoparse("2024-02-01T00:00:00Z")
 t1p = isoparse("2024-02-03T23:59:00Z")
 day_range_slider = DateRangeSlider(width=800, start=t0, end=t1, value=(t0p,t1p))
 minimum_rad_density_slider = Slider(title='Minimum rad density', start=30, end=1000, value=5)
+weather_compensation_threshold_slider = Slider(title='Weather compensation threshold temperature', start=0, end=30, value=15, step=0.1)
 weather_compensation_ratio_slider = Slider(title='Weather compensation ratio', start=0.1, end=1.5, value=0.6, step=0.05)
 radiator_response_time_slider = Slider(title='Radiator response time', start=0, end=60, value=interval_minutes*2, step=interval_minutes)
 flow_temperature_reading_offset_slider = Slider(title='Correction factor for flow temperature readings', start=-20, end=50, value=5)
 temperature_change_factor_slider = Slider(title='Temperatue change ratio', start=1, end=1000, value=10)
+setpoint_slider = Slider(title='Temperature setpoint', start=15, end=25, value=19, step=0.1)
 night_set_back_slider = Slider(title="night set back", start=0, end=15, value=0)
-sliders = [ day_range_slider, power_slider, air_factor_slider, flow_temperature_slider, minimum_rad_density_slider, weather_compensation_ratio_slider, night_set_back_slider, radiator_response_time_slider, flow_temperature_reading_offset_slider, temperature_change_factor_slider]
+setpoint_delta_slider = Slider(title="setpoint delta", start=-10, end=10, value=0, step=0.1)
+sliders = [ 
+    day_range_slider, 
+    power_slider, 
+    air_factor_slider, 
+    flow_temperature_slider, 
+    minimum_rad_density_slider, 
+    weather_compensation_threshold_slider, 
+    weather_compensation_ratio_slider,
+    night_set_back_slider,
+    radiator_response_time_slider,
+    flow_temperature_reading_offset_slider,
+    temperature_change_factor_slider,
+    setpoint_slider,
+    setpoint_delta_slider
+]
 real_temperatures_switch = Switch(active=True)
 real_setpoints_switch = Switch(active=True)
 weather_compensation_switch = Switch(active=False)
@@ -420,6 +440,7 @@ def heat_pump_mode_callback():
     power_slider.value = 12000
     real_temperatures_switch.active = False
     real_setpoints_switch.active = False
+    minimum_rad_density_slider.value = 300
     do_callback()
 
 def boiler_mode_callback():
@@ -427,6 +448,7 @@ def boiler_mode_callback():
     power_slider.value = 40000
     real_temperatures_switch.active = True
     real_setpoints_switch.active = True
+    minimum_rad_density_slider.value = 5
     do_callback()
 
 def go_full_year():
@@ -442,12 +464,8 @@ heat_pump_mode_button = Button(label='Switch to heat pump settings')
 heat_pump_mode_button.on_click(heat_pump_mode_callback)
 full_year_button = Button(label='Switch to full year')
 full_year_button.on_click(go_full_year)
-layout = column([
-    row([room_select]), 
-    row(sliders[:3]), 
-    row(sliders[3:7]), 
-    row(sliders[7:]), 
-    row([
+layout = column([row([room_select])]+row_split(sliders, 4)+
+    [row([
         Div(text='Use historical temperatures'), real_temperatures_switch,
         Div(text='Use historical setpoints'), real_setpoints_switch,
         boiler_button,
@@ -455,11 +473,9 @@ layout = column([
         full_year_button
     ]),
     row([energy_use]),
-    row([Div(text='Weather compensation'), weather_compensation_switch]),     
-    row(axs[:2]),
-    row(axs[2:4]),
-    row(axs[4:6]),
-    row(axs[6:8])])
+    row([Div(text='Weather compensation'), weather_compensation_switch])]+     
+    row_split(axs, 2)
+)
 curdoc().add_root(layout)
     
 #curdoc().add_periodic_callback(update_data, 10)
