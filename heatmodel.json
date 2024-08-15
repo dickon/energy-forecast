@@ -111,8 +111,8 @@
         ],
         "radiators": [
           {
-            "name": "Type 11 contemporary 1300x600",
-            "heat50k": 1144,
+            "name": "Type 11 contemporary 1300x600 but underperforing; theoretically 1144",
+            "heat50k": 700,
             "model": "pow",
             "heat": 666.5506260439784
           }
