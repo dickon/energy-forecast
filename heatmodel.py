@@ -184,7 +184,7 @@ def calculate_data(room: str='') -> pd.DataFrame:
         room_powers = {}
         discrepanices = {}
         for phase in [0,1]:
-            house_rad_output = 0
+            house_rad_output_watts = 0
             for room_index, (room_name, room_data) in enumerate(data['rooms'].items()):
                 target_t_lagged = target_t = (21.5 if room_name != 'Master suite' else 19)
                 room_name_alias = room_name
@@ -206,14 +206,14 @@ def calculate_data(room: str='') -> pd.DataFrame:
 
                 verbose = room_name == 'Downstairs study'  and False
                 #print(room_name)
-                room_tot_flow = 0
+                room_tot_flow_watts = 0
                 temperatures.setdefault(room_name, 20)
                 delta_t = temperatures['external'] - temperatures[room_name]
 
-                infiltration = room_data['air_change_an_hour'] * air_factor_slider.value * room_data['volume'] * delta_t
+                infiltration_watts = room_data['air_change_an_hour'] * air_factor_slider.value * room_data['volume'] * delta_t
                 if False:
-                    print(f'{room_name} infiltration={infiltration} from delta T {delta_t}')
-                room_tot_flow += infiltration
+                    print(f'{room_name} infiltration={infiltration_watts} from delta T {delta_t}')
+                room_tot_flow_watts += infiltration_watts
                 if not (t.hour >= 6 and t.hour < 23):
                     target_t_lagged -= night_set_back_slider.value
                 for elem in room_data['elements']:
@@ -231,35 +231,38 @@ def calculate_data(room: str='') -> pd.DataFrame:
                     elem_area = elem_rec['A']
                     elem_type_rec = data['element_type'][elem_type]
                     elem_type_u = elem_type_rec['uvalue']
-                    wk = elem_type_u * elem_area
-                    flow = delta_t * wk 
-                    #print(f'  {elem_rec["width"]:.02f}*{elem_rec["height"]:.02f} {elem_rec["type"]} WK={elem_rec["wk"]:.1f} to {elem["boundary"]}@{other_temperature}dT{delta_t} {flow:.0f}W')
-                    room_tot_flow += flow
-                if phase == 1:
-                    recs.setdefault(f'{room_name}_loss', []).append(-room_tot_flow * 60 / interval_minutes)
-                available_rad_power = 0
+                    watts_per_kelvin = elem_type_u * elem_area
+                    flow_watts = delta_t * watts_per_kelvin 
+                    if False and room == 'Master suite' and phase == 1:
+                        print(f'  {elem_rec["width"]:.02f}*{elem_rec["height"]:.02f} {elem_rec["type"]} WK={watts_per_kelvin:.1f} to {elem["boundary"]}@{other_temperature}dT{delta_t} flow={flow_watts:.0f}W')
+                    room_tot_flow_watts += flow_watts
+                if phase == 1:               
+                    if False and room == 'Master suite':
+                        print(f' total {room_tot_flow_watts:.0f}W')         
+                    recs.setdefault(f'{room_name}_loss', []).append(-room_tot_flow_watts)
+                available_rad_watts = 0
                 for rad in room_data['radiators']:
                     temperatures.setdefault(room_name, 21)
                     rad_delta_t = max(0, flow_t - temperatures[room_name])
-                    rad_power = (rad['heat50k'] *radiator_scales[room_name] * rad_delta_t / 50) * satisfaction 
-                    if False and room_name == 'Master suite':
-                        print(f'  { room_name} rad {rad["name"]} 50K {rad['heat50k']} rad delta T {rad_delta_t} scale { radiator_scales[room_name] } satisfaction { satisfaction } power {rad_power:.0f}W')
-                    available_rad_power += rad_power
+                    rad_watts = (rad['heat50k'] *radiator_scales[room_name] * rad_delta_t / 50) * satisfaction 
+                    if False and room_name == room:
+                        print(f'  { room_name} rad {rad["name"]} 50K {rad['heat50k']} rad delta T {rad_delta_t} scale { radiator_scales[room_name] } satisfaction { satisfaction } power {rad_watts:.0f}W')
+                    available_rad_watts += rad_watts
                 if temperatures[room_name] < target_t_lagged+0.5:
                     # room too cold; rads run flat out
-                    room_rad_output= available_rad_power
+                    room_rad_output= available_rad_watts
                 elif temperatures[room_name] < target_t_lagged+1.5:
                     # room about right; rads run at heat output
-                    room_rad_output = -room_tot_flow
+                    room_rad_output = -room_tot_flow_watts
                 else:
                     # room too hot; rads off
                     room_rad_output = 0
-                room_tot_flow += room_rad_output
-                house_rad_output += room_rad_output
+                room_tot_flow_watts += room_rad_output
+                house_rad_output_watts += room_rad_output
 
                 if phase == 1:
                     recs.setdefault(room_name+'_gain', []).append(room_rad_output)
-                    temp_change = room_tot_flow / (room_data['area']*300)
+                    temp_change = room_tot_flow_watts * interval_minutes / 60 / (room_data['area']*300)
                     orig_temp = temperatures[room_name]
                     temperatures[room_name] += temp_change
                     if real_temperatures_switch.active and room_name_alias in house_data.room_temperatures:
@@ -269,7 +272,7 @@ def calculate_data(room: str='') -> pd.DataFrame:
                             actual_temp_change = realtemp - orig_temp
                             actual_flow = actual_temp_change * (room_data['area']*300)
                             #print('actual flow', actual_flow, 'calculated', room_tot_flow, 'for', room_name, 'at', next_t)
-                            delta = actual_flow - room_tot_flow
+                            delta = actual_flow - room_tot_flow_watts
                             discrepanices[room_name] = delta
                             temperatures[room_name] = realtemp
                     else:
@@ -277,29 +280,29 @@ def calculate_data(room: str='') -> pd.DataFrame:
                         pass
 
                     if verbose:
-                        print(f'   Total room flow={room_tot_flow:.0f}W area {room_data['area']:.0f}qm^2 temperature +{temp_change}->{temperatures[room_name]}')
+                        print(f'   Total room flow={room_tot_flow_watts:.0f}W area {room_data['area']:.0f}qm^2 temperature +{temp_change}->{temperatures[room_name]}')
             if phase == 0:
-                if house_rad_output == 0: house_rad_output = 500
+                if house_rad_output_watts == 0: house_rad_output_watts = 500
                 # if we need 20 kw and system power is 10kw then satisfaction = 0.5
                 # if we need 5 kw and system power is 10kw then satisfaction = 1.0
-                ideal_power_out = house_rad_output
+                ideal_power_out = house_rad_output_watts
                 if ideal_power_out < system_power:
                     satisfaction = 1.0
                 else:
                     satisfaction =  system_power / ideal_power_out
                 satisfactions.append(satisfaction)
             if phase == 1:
-                input_power_series.append ( house_rad_output / efficiency)
+                input_power_series.append ( house_rad_output_watts / efficiency)
                 if False:
-                    print(f'{t} power {house_rad_output/1e3:.1f}kW (ideal:{ideal_power_out/1e3:.1f}kW) inside={temperatures['Downstairs study']:.1f}C outside={temperatures['external']:.1f}C power={house_rad_output} satisfaction={satisfaction*100:.0f}%')
+                    print(f'{t} power {house_rad_output_watts/1e3:.1f}kW (ideal:{ideal_power_out/1e3:.1f}kW) inside={temperatures['Downstairs study']:.1f}C outside={temperatures['external']:.1f}C power={house_rad_output_watts} satisfaction={satisfaction*100:.0f}%')
 
         t = next_t
         for k,v  in temperatures.items():
             recs.setdefault(k+'_temperature', []).append(v)
         for k in data['rooms'].keys():
             recs.setdefault(k+'_power_error', []).append(discrepanices.get(k, 0))
-        assert house_rad_output >= 0
-        powers.append(house_rad_output)
+        assert house_rad_output_watts >= 0
+        powers.append(house_rad_output_watts)
 
     df = pd.DataFrame(recs)
     df['loss_for_room'] = df[room+'_loss']
