@@ -197,10 +197,11 @@ def calculate_data(room: str='') -> pd.DataFrame:
 
                 if real_setpoints_switch.active:
                     if room_name_alias in house_data.room_setpoints:
-                        realset = house_data.room_setpoints[room_name_alias].get(t) + setpoint_delta_slider.value
+                        realset = max(house_data.room_setpoints[room_name_alias].get(t) + setpoint_delta_slider.value, setpoint_minimum_slider.value)
+
                         if realset is not None:
                             target_t = realset
-                        realset_lagged = house_data.room_setpoints[room_name_alias].get(t-timedelta(minutes=radiator_response_time_slider.value)) + setpoint_delta_slider.value
+                        realset_lagged = max(house_data.room_setpoints[room_name_alias].get(t-timedelta(minutes=radiator_response_time_slider.value)) + setpoint_delta_slider.value, setpoint_minimum_slider.value)
                         if realset_lagged is not None:
                             target_t_lagged = realset_lagged
                 if phase == 1:
@@ -359,6 +360,7 @@ temperature_change_factor_slider = Slider(title='Temperatue change ratio', start
 setpoint_slider = Slider(title='Temperature setpoint', start=15, end=25, value=19, step=0.1)
 night_set_back_slider = Slider(title="night set back", start=0, end=15, value=0)
 setpoint_delta_slider = Slider(title="setpoint delta", start=-10, end=10, value=0, step=0.1)
+setpoint_minimum_slider = Slider(title="setpoint minimum", start=0, end=21, value=10, step=0.5)
 sliders = [ 
     day_range_slider, 
     power_slider, 
@@ -372,7 +374,8 @@ sliders = [
     flow_temperature_reading_offset_slider,
     temperature_change_factor_slider,
     setpoint_slider,
-    setpoint_delta_slider
+    setpoint_delta_slider,
+    setpoint_minimum_slider
 ]
 real_temperatures_switch = Switch(active=True)
 real_setpoints_switch = Switch(active=True)
