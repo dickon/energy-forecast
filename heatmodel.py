@@ -262,7 +262,7 @@ def calculate_data(room: str='') -> pd.DataFrame:
 
                 if phase == 1:
                     recs.setdefault(room_name+'_gain', []).append(room_rad_output)
-                    temp_change = room_tot_flow_watts * interval_minutes / 60 / (room_data['area']*300)
+                    temp_change = room_tot_flow_watts * interval_minutes / 60 / (room_data['volume']*temperature_change_factor_slider.value)
                     orig_temp = temperatures[room_name]
                     temperatures[room_name] += temp_change
                     if real_temperatures_switch.active and room_name_alias in house_data.room_temperatures:
@@ -270,7 +270,7 @@ def calculate_data(room: str='') -> pd.DataFrame:
                         if realtemp is not None:
                             #print('real temp', realtemp, 'for',room_name, 'at', next_t, 'c/w caluclated', temperatures[room_name])
                             actual_temp_change = realtemp - orig_temp
-                            actual_flow = actual_temp_change * (room_data['area']*300)
+                            actual_flow = actual_temp_change * (room_data['volume']*temperature_change_factor_slider.value)
                             #print('actual flow', actual_flow, 'calculated', room_tot_flow, 'for', room_name, 'at', next_t)
                             delta = actual_flow - room_tot_flow_watts
                             discrepanices[room_name] = delta
@@ -350,9 +350,10 @@ day_range_slider = DateRangeSlider(width=800, start=t0, end=t1, value=(t0p,t1p))
 minimum_rad_density_slider = Slider(title='Minimum rad density', start=30, end=1000, value=5)
 weather_compensation_ratio_slider = Slider(title='Weather compensation ratio', start=0.1, end=1.5, value=0.6, step=0.05)
 radiator_response_time_slider = Slider(title='Radiator response time', start=0, end=60, value=interval_minutes*2, step=interval_minutes)
-flow_temperature_reading_offset_slider = Slider(title='Correction factor for flow temperature readings', start=-20, end=50, value=30)
+flow_temperature_reading_offset_slider = Slider(title='Correction factor for flow temperature readings', start=-20, end=50, value=5)
+temperature_change_factor_slider = Slider(title='Temperatue change ratio', start=1, end=1000, value=10)
 night_set_back_slider = Slider(title="night set back", start=0, end=15, value=0)
-sliders = [ day_range_slider, power_slider, air_factor_slider, flow_temperature_slider, minimum_rad_density_slider, weather_compensation_ratio_slider, night_set_back_slider, radiator_response_time_slider, flow_temperature_reading_offset_slider]
+sliders = [ day_range_slider, power_slider, air_factor_slider, flow_temperature_slider, minimum_rad_density_slider, weather_compensation_ratio_slider, night_set_back_slider, radiator_response_time_slider, flow_temperature_reading_offset_slider, temperature_change_factor_slider]
 real_temperatures_switch = Switch(active=True)
 real_setpoints_switch = Switch(active=True)
 weather_compensation_switch = Switch(active=False)
@@ -443,8 +444,9 @@ full_year_button = Button(label='Switch to full year')
 full_year_button.on_click(go_full_year)
 layout = column([
     row([room_select]), 
-    row(sliders[:4]), 
-    row(sliders[4:9]), 
+    row(sliders[:3]), 
+    row(sliders[3:7]), 
+    row(sliders[7:]), 
     row([
         Div(text='Use historical temperatures'), real_temperatures_switch,
         Div(text='Use historical setpoints'), real_setpoints_switch,
