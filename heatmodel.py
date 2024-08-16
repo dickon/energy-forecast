@@ -164,14 +164,16 @@ def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
             target_ts[room_name] = target_t
             target_ts_delayed[room_name] = target_ts_delayed
 
+        room_flows_watts = {}
+        for _, room_name, room_data in room_records:                    
+            room_flows_watts[room_name] = work_out_room_flow(temperatures, room_name, room_data)
+            # room flows are normally negative, so we invert the series for the chart so it is readable
+            recs.setdefault(f'{room_name}_loss', []).append(-room_flows_watts[room_name])
+            
         for phase in [0,1]:
             house_rad_output_watts = 0
             for room_name_alias, room_name, room_data in room_records:                    
-                room_tot_flow_watts = work_out_room_flow(temperatures, room_name, room_data)
-                if phase == 1:               
-                    if False and room == 'Master suite':
-                        print(f' total {room_tot_flow_watts:.0f}W')         
-                    recs.setdefault(f'{room_name}_loss', []).append(-room_tot_flow_watts)
+                    
                 available_rad_watts = 0
                 for rad in room_data['radiators']:
                     temperatures.setdefault(room_name, 21)
