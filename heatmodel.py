@@ -128,28 +128,16 @@ with open('heatmodel.json', 'r') as f:
     data = json.load(f)
 
 def calculate_data(room: str='') -> pd.DataFrame:
-    out_temperatures = []
     temperatures = {}
     start_t = t = pytz.utc.localize(datetime.fromtimestamp(day_range_slider.value[0]/1000))
     end_t = pytz.utc.localize(datetime.fromtimestamp(day_range_slider.value[-1]/1000))
     print('start', start_t, "end", end_t)
-    radiator_scales = {}
-    total_base_rad_power = 0
-    for room_name, room_data in data['rooms'].items():
-        base_rad_power = sum([rad['heat50k'] for rad in room_data['radiators']])
-        rad_density = max(100, base_rad_power) / room_data['area']
-        scale = max(minimum_rad_density_slider.value, rad_density) / rad_density
-        radiator_scales[room_name] = scale
-        total_base_rad_power += base_rad_power
-    print(f'Total base radiator {total_base_rad_power/1e3}kW')
+    radiator_scales = scale_radiators()
     
-    #pprint.pprint(radiator_scales)
     cursor = 0
     powers = []
     satisfactions = []
-    system_power = power_slider.value
-    input_power_series = []
-    recs = { "time":[], "output_power":powers, "input_power":input_power_series,  "satisfactions":satisfactions, "meters":[]}
+    recs = { "time":[], "output_power":powers, "input_power":[],  "satisfactions":satisfactions, "meters":[]}
 
     while t < end_t:
         while cursor+ 1< len(house_data.outside_temperatures) and house_data.outside_temperatures[cursor+1].time < t:
@@ -174,18 +162,15 @@ def calculate_data(room: str='') -> pd.DataFrame:
         recs.setdefault('send_temperature', []).append(flow_t)
 
         return_t = flow_t - 20.0
-        if return_t < 27: efficiency = 0.97
-        elif return_t < 32: efficiency = 0.96
-        elif return_t < 40: efficiency = 0.95
-        elif return_t < 45: efficiency = 0.93
-        elif return_t < 50: efficiency = 0.92
-        elif return_t < 55: efficiency = 0.87
-        else: efficiency = 0.86
+        efficiency = calculate_gas_efficiency(return_t)
 
         weather_compensation_ratio = 1.0
         room_powers = {}
         discrepanices = {}
         for phase in [0,1]:
+            if False:
+                print()
+                print(t, phase)
             house_rad_output_watts = 0
             for room_index, (room_name, room_data) in enumerate(data['rooms'].items()):
                 target_t_lagged = target_t = (setpoint_slider.value if room_name != 'Master suite' else setpoint_slider.value)
@@ -247,19 +232,23 @@ def calculate_data(room: str='') -> pd.DataFrame:
                 for rad in room_data['radiators']:
                     temperatures.setdefault(room_name, 21)
                     rad_delta_t = max(0, flow_t - temperatures[room_name])
-                    rad_watts = (rad['heat50k'] *radiator_scales[room_name] * rad_delta_t / 50) * satisfaction 
+                    rad_watts = (rad['heat50k'] *radiator_scales[room_name] * rad_delta_t / 50)
                     if False and room_name == room:
                         print(f'  { room_name} rad {rad["name"]} 50K {rad['heat50k']} rad delta T {rad_delta_t} scale { radiator_scales[room_name] } satisfaction { satisfaction } power {rad_watts:.0f}W')
                     available_rad_watts += rad_watts
                 if temperatures[room_name] < target_t_lagged-0.25:
                     # room too cold; rads run flat out
-                    room_rad_watts= available_rad_watts
+                    room_rad_watts= available_rad_watts*satisfaction
                 elif temperatures[room_name] < target_t_lagged+0.25:
                     # room about right; rads run at heat output
-                    room_rad_watts = min(available_rad_watts, max(-room_tot_flow_watts, 0))
+                    room_rad_watts = min(available_rad_watts*satisfaction, max(-room_tot_flow_watts, 0))
                 else:
                     # room too hot; rads off
                     room_rad_watts = 0
+                if False:
+                    print(f'{room_name} output {room_rad_watts} of {available_rad_watts} satisfaction={satisfaction} temp={temperatures[room_name]} target={target_t_lagged}  available power={available_rad_watts}')
+
+                assert room_rad_watts <= available_rad_watts*satisfaction, room_rad_watts
                 room_tot_flow_watts += room_rad_watts
                 
                 house_rad_output_watts += room_rad_watts
@@ -290,13 +279,14 @@ def calculate_data(room: str='') -> pd.DataFrame:
                 # if we need 20 kw and system power is 10kw then satisfaction = 0.5
                 # if we need 5 kw and system power is 10kw then satisfaction = 1.0
                 ideal_power_out = house_rad_output_watts
-                if ideal_power_out < system_power:
-                    satisfaction = 1.0
-                else:
-                    satisfaction =  system_power / ideal_power_out
-                satisfactions.append(satisfaction)
+                satisfaction =  min(1.0, power_slider.value / ideal_power_out)
+                recs['satisfactions'].append(satisfaction)
             if phase == 1:
-                input_power_series.append ( house_rad_output_watts / efficiency)
+                if False or house_rad_output_watts > power_slider.value:
+                    print('total rad output', house_rad_output_watts, 'c/w', power_slider.value, 'satisfaction', satisfaction)
+                
+                #assert house_rad_output_watts <= power_slider.value*1.001, (house_rad_output_watts, power_slider.value, satisfaction, ideal_power_out)
+                recs.setdefault('input_power', []).append ( house_rad_output_watts / efficiency )
                 if False:
                     print(f'{t} power {house_rad_output_watts/1e3:.1f}kW (ideal:{ideal_power_out/1e3:.1f}kW) inside={temperatures['Downstairs study']:.1f}C outside={temperatures['external']:.1f}C power={house_rad_output_watts} satisfaction={satisfaction*100:.0f}%')
 
@@ -305,7 +295,7 @@ def calculate_data(room: str='') -> pd.DataFrame:
             recs.setdefault(k+'_temperature', []).append(v)
         for k in data['rooms'].keys():
             recs.setdefault(k+'_power_error', []).append(discrepanices.get(k, 0))
-        assert house_rad_output_watts >= 0
+        #assert house_rad_output_watts >= 0, (house_rad_output_watts, power_slider.value, satisfaction, ideal_power_out)
         powers.append(house_rad_output_watts)
 
     df = pd.DataFrame(recs)
@@ -315,6 +305,28 @@ def calculate_data(room: str='') -> pd.DataFrame:
     df['temperature'] = df[room+'_temperature']
     df['setpoint'] = df[room+'_setpoint']
     return df
+
+def scale_radiators():
+    radiator_scales = {}
+    total_base_rad_power = 0
+    for room_name, room_data in data['rooms'].items():
+        base_rad_power = sum([rad['heat50k'] for rad in room_data['radiators']])
+        rad_density = max(100, base_rad_power) / room_data['area']
+        scale = max(minimum_rad_density_slider.value, rad_density) / rad_density
+        radiator_scales[room_name] = scale
+        total_base_rad_power += base_rad_power
+    print(f'Total base radiator {total_base_rad_power/1e3}kW')
+    return radiator_scales
+
+def calculate_gas_efficiency(return_t):
+    if return_t < 27: efficiency = 0.97
+    elif return_t < 32: efficiency = 0.96
+    elif return_t < 40: efficiency = 0.95
+    elif return_t < 45: efficiency = 0.93
+    elif return_t < 50: efficiency = 0.92
+    elif return_t < 55: efficiency = 0.87
+    else: efficiency = 0.86
+    return efficiency
 
 
 def update_data(attr, old, new):
@@ -387,7 +399,7 @@ energy_text = work_out_energy_use(df)
 room_colours = plasma(len(data['rooms']))
 axs = []
 
-for i in range(7):
+for i in range(8):
     s = figure(height=400, width=800, x_axis_type='datetime', tools='hover,xwheel_zoom')
     s.add_tools(CrosshairTool(overlay=[width, height]))
     axs.append(s)
@@ -435,6 +447,10 @@ axs[4].line(x='time', y='gain_for_room', source=main_ds)
 axs[6].title = 'Flow temperature'
 axs[6].yaxis.axis_label = 'Celsius'
 axs[6].line(x='time', y='send_temperature', source=main_ds)
+
+axs[7].title = 'Satisfaction'
+axs[7].yaxis.axis_label = 'Ratio'
+axs[7].line(x='time', y='satisfactions', source=main_ds)
 def change_room(attr, old, new):
     do_callback()
 
