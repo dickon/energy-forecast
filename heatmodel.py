@@ -374,7 +374,7 @@ flow_temperature_slider = Slider(title='Flow temperature (C)', start=25, end=65,
 t0 = isoparse("2023-08-01T00:00:00Z")
 t1 = datetime.now()
 t0p = isoparse("2024-02-01T00:00:00Z")
-t1p = isoparse("2024-02-03T23:59:00Z")
+t1p = isoparse("2024-02-01T23:59:00Z")
 day_range_slider = DateRangeSlider(width=800, start=t0, end=t1, value=(t0p,t1p))
 minimum_rad_density_slider = Slider(title='Minimum rad density', start=30, end=1000, value=5)
 weather_compensation_threshold_slider = Slider(title='Weather compensation threshold temperature', start=0, end=30, value=15, step=0.1)
