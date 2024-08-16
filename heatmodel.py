@@ -152,14 +152,20 @@ def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
         room_powers = {}
         discrepanices = {}
         room_records = [ (calculate_room_name_alias(room_name), room_name, room_data) for (room_name, room_data) in data['rooms'].items() ]
+
+
+        # work out the target temperature for all rooms, plus a lagged set of values to reflect system response time
+        target_ts= {}
+        target_ts_delayed = {}
+        for room_name_alias, room_name, room_data in room_records:
+            target_t, target_t_lagged = calculate_target_temperature(t, room_name_alias)
+            recs.setdefault(room_name+"_setpoint", []).append(target_t)
+            target_ts[room_name] = target_t
+            target_ts_delayed[room_name] = target_ts_delayed
+
         for phase in [0,1]:
             house_rad_output_watts = 0
-            for room_name_alias, room_name, room_data in room_records:
-
-                target_t, target_t_lagged = calculate_target_temperature(t, room_name_alias)
-                if phase == 1:
-                    recs.setdefault(room_name+"_setpoint", []).append(target_t)
-
+            for room_name_alias, room_name, room_data in room_records:                    
                 room_tot_flow_watts = 0
                 temperatures.setdefault(room_name, 20)
                 delta_t = temperatures['external'] - temperatures[room_name]
