@@ -127,7 +127,7 @@ house_data = load_house_data()
 with open('heatmodel.json', 'r') as f:
     data = json.load(f)
 
-def calculate_data(room: str='') -> pd.DataFrame:
+def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
     temperatures = {}
     start_t = t = pytz.utc.localize(datetime.fromtimestamp(day_range_slider.value[0]/1000))
     end_t = pytz.utc.localize(datetime.fromtimestamp(day_range_slider.value[-1]/1000))
@@ -139,8 +139,6 @@ def calculate_data(room: str='') -> pd.DataFrame:
     while t < end_t:
         while cursor+ 1< len(house_data.outside_temperatures) and house_data.outside_temperatures[cursor+1].time < t:
             cursor += 1
-        next_t = t + timedelta(minutes=interval_minutes)
-
         rec = house_data.outside_temperatures[cursor]
         recs.setdefault('meters', []).append(house_data.gas_readings.get(t, 0.0))
         temperatures['external'] = rec.temperature
@@ -248,7 +246,7 @@ def calculate_data(room: str='') -> pd.DataFrame:
                     if real_temperatures_switch.active and room_name_alias in house_data.room_temperatures:
                         realtemp = house_data.room_temperatures[room_name_alias].get(t)
                         if realtemp is not None:
-                            #print('real temp', realtemp, 'for',room_name, 'at', next_t, 'c/w caluclated', temperatures[room_name])
+                            #print('real temp', realtemp, 'for',room_name, 'at', t, 'c/w caluclated', temperatures[room_name])
                             actual_temp_change = realtemp - orig_temp
                             actual_flow = actual_temp_change * (room_data['volume']*temperature_change_factor_slider.value)
                             #print('actual flow', actual_flow, 'calculated', room_tot_flow, 'for', room_name, 'at', next_t)
@@ -277,13 +275,13 @@ def calculate_data(room: str='') -> pd.DataFrame:
                 if False:
                     print(f'{t} power {house_rad_output_watts/1e3:.1f}kW (ideal:{ideal_power_out/1e3:.1f}kW) inside={temperatures['Downstairs study']:.1f}C outside={temperatures['external']:.1f}C power={house_rad_output_watts} satisfaction={satisfaction*100:.0f}%')
 
-        t = next_t
         for k,v  in temperatures.items():
             recs.setdefault(k+'_temperature', []).append(v)
         for k in data['rooms'].keys():
             recs.setdefault(k+'_power_error', []).append(discrepanices.get(k, 0))
         #assert house_rad_output_watts >= 0, (house_rad_output_watts, power_slider.value, satisfaction, ideal_power_out)
         recs.setdefault('output_power', []).append(house_rad_output_watts)
+        t += timedelta(minutes=interval_minutes)
 
     df = pd.DataFrame(recs)
     df['loss_for_room'] = df[room+'_loss']
