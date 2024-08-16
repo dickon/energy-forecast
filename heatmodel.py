@@ -172,60 +172,53 @@ def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
             # room flows are normally negative, so we invert the series for the chart so it is readable
             recs.setdefault(f'{room_name}_loss', []).append(-room_flows_watts[room_name])
             
+        # work out radiator output if the heat source is infinite
+        rooms_rad_watts_unbounded = calculate_radiator_outputs(temperatures, radiator_scales, room_records, 1.0, flow_t, target_t_lagged, room_flows_watts)
+        ideal_power_out = max(500, sum(rooms_rad_watts_unbounded.values()))
+
+        # now work out how much of unbounded heat output can actually be satisfied by the boiler
+        satisfaction =  min(1.0, power_slider.value / ideal_power_out)
+        recs.setdefault('satisfactions', []).append(satisfaction)
+        rooms_rad_watts = calculate_radiator_outputs(temperatures, radiator_scales, room_records, satisfaction, flow_t, target_t_lagged, room_flows_watts)
+        actual_power_out = sum(rooms_rad_watts.values())
+        for _, room_name, room_data in room_records:                                                    
+            room_net_flow_watts = room_flows_watts[room_name] + rooms_rad_watts[room_name]
+            
+            recs.setdefault(room_name+'_gain', []).append(rooms_rad_watts[room_name])
+            temp_change = room_net_flow_watts * interval_minutes / 60 / (room_data['volume']*temperature_change_factor_slider.value)
+            orig_temp = temperatures[room_name]
+            temperatures[room_name] += temp_change
+            if real_temperatures_switch.active and room_name_alias in house_data.room_temperatures:
+                realtemp = house_data.room_temperatures[room_name_alias].get(t)
+                if realtemp is not None:
+                    #print('real temp', realtemp, 'for',room_name, 'at', t, 'c/w caluclated', temperatures[room_name])
+                    actual_temp_change = realtemp - orig_temp
+                    actual_flow = actual_temp_change * (room_data['volume']*temperature_change_factor_slider.value)
+                    #print('actual flow', actual_flow, 'calculated', room_tot_flow, 'for', room_name, 'at', next_t)
+                    delta = actual_flow - room_net_flow_watts
+                    discrepanices[room_name] = delta
+                    temperatures[room_name] = realtemp
+            else:
+                #print('room missing for', room_name)
+                pass
+
+            if verbose:
+                print(f'   Total room net flow={room_net_flow_watts:.0f}W area {room_data['area']:.0f}qm^2 temperature +{temp_change}->{temperatures[room_name]}')
+        if False or actual_power_out > power_slider.value:
+            print('total rad output', actual_power_out, 'c/w', power_slider.value, 'satisfaction', satisfaction)
         
-        for phase in [0,1]:
-            rooms_rad_watts = calculate_radiator_outputs(temperatures, radiator_scales, room_records, satisfaction, flow_t, target_t_lagged, room_flows_watts)
-
-            house_rad_output_watts = 0
-            for _, room_name, room_data in room_records:                                                    
-                room_net_flow_watts = room_flows_watts[room_name] + rooms_rad_watts[room_name]
-                
-                house_rad_output_watts += rooms_rad_watts[room_name]
-
-                if phase == 1:
-                    recs.setdefault(room_name+'_gain', []).append(rooms_rad_watts[room_name])
-                    temp_change = room_net_flow_watts * interval_minutes / 60 / (room_data['volume']*temperature_change_factor_slider.value)
-                    orig_temp = temperatures[room_name]
-                    temperatures[room_name] += temp_change
-                    if real_temperatures_switch.active and room_name_alias in house_data.room_temperatures:
-                        realtemp = house_data.room_temperatures[room_name_alias].get(t)
-                        if realtemp is not None:
-                            #print('real temp', realtemp, 'for',room_name, 'at', t, 'c/w caluclated', temperatures[room_name])
-                            actual_temp_change = realtemp - orig_temp
-                            actual_flow = actual_temp_change * (room_data['volume']*temperature_change_factor_slider.value)
-                            #print('actual flow', actual_flow, 'calculated', room_tot_flow, 'for', room_name, 'at', next_t)
-                            delta = actual_flow - room_net_flow_watts
-                            discrepanices[room_name] = delta
-                            temperatures[room_name] = realtemp
-                    else:
-                        #print('room missing for', room_name)
-                        pass
-
-                    if verbose:
-                        print(f'   Total room net flow={room_net_flow_watts:.0f}W area {room_data['area']:.0f}qm^2 temperature +{temp_change}->{temperatures[room_name]}')
-            if phase == 0:
-                if house_rad_output_watts == 0: house_rad_output_watts = 500
-                # if we need 20 kw and system power is 10kw then satisfaction = 0.5
-                # if we need 5 kw and system power is 10kw then satisfaction = 1.0
-                ideal_power_out = house_rad_output_watts
-                satisfaction =  min(1.0, power_slider.value / ideal_power_out)
-                recs.setdefault('satisfactions', []).append(satisfaction)
-            if phase == 1:
-                if False or house_rad_output_watts > power_slider.value:
-                    print('total rad output', house_rad_output_watts, 'c/w', power_slider.value, 'satisfaction', satisfaction)
-                
-                #assert house_rad_output_watts <= power_slider.value*1.001, (house_rad_output_watts, power_slider.value, satisfaction, ideal_power_out)
-                efficiency = calculate_gas_efficiency(flow_t - 20.0)
-                recs.setdefault('input_power', []).append ( house_rad_output_watts / efficiency )
-                if False:
-                    print(f'{t} power {house_rad_output_watts/1e3:.1f}kW (ideal:{ideal_power_out/1e3:.1f}kW) inside={temperatures['Downstairs study']:.1f}C outside={temperatures['external']:.1f}C power={house_rad_output_watts} satisfaction={satisfaction*100:.0f}%')
+        #assert house_rad_output_watts <= power_slider.value*1.001, (house_rad_output_watts, power_slider.value, satisfaction, ideal_power_out)
+        efficiency = calculate_gas_efficiency(flow_t - 20.0)
+        recs.setdefault('input_power', []).append ( actual_power_out / efficiency )
+        if False:
+            print(f'{t} power {house_rad_output_watts_unbounded/1e3:.1f}kW (ideal:{ideal_power_out/1e3:.1f}kW) inside={temperatures['Downstairs study']:.1f}C outside={temperatures['external']:.1f}C power={house_rad_output_watts_unbounded} satisfaction={satisfaction*100:.0f}%')
 
         for k,v  in temperatures.items():
             recs.setdefault(k+'_temperature', []).append(v)
         for k in data['rooms'].keys():
             recs.setdefault(k+'_power_error', []).append(discrepanices.get(k, 0))
         #assert house_rad_output_watts >= 0, (house_rad_output_watts, power_slider.value, satisfaction, ideal_power_out)
-        recs.setdefault('output_power', []).append(house_rad_output_watts)
+        recs.setdefault('output_power', []).append(actual_power_out)
         t += timedelta(minutes=interval_minutes)
 
     df = pd.DataFrame(recs)
