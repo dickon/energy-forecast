@@ -173,6 +173,7 @@ def calculate_data(focus_room: str='', verbose: bool = False) -> pd.DataFrame:
             recs.setdefault(f'{room_name}_loss', []).append(-room_flows_watts[room_name])
         recs.setdefault('loss_for_room', []).append(-room_flows_watts[focus_room])
         # work out radiator output if the heat source is infinite
+        recs.setdefault('available_radiator_power', []).append(calculate_available_radiator_watts(temperatures, radiator_scales, flow_t, focus_room, data['rooms'][focus_room]))
         rooms_rad_watts_unbounded = calculate_radiator_outputs(temperatures, radiator_scales, room_records, 1.0, flow_t, target_t_lagged, room_flows_watts)
         recs.setdefault('gain_for_room_unbounded', []).append(rooms_rad_watts_unbounded[focus_room])
         ideal_power_out = max(500, sum(rooms_rad_watts_unbounded.values()))
@@ -223,7 +224,9 @@ def calculate_data(focus_room: str='', verbose: bool = False) -> pd.DataFrame:
         recs.setdefault('output_power', []).append(actual_power_out)
         t += timedelta(minutes=interval_minutes)
 
-    return pd.DataFrame(recs)
+    df = pd.DataFrame(recs)
+    df.set_index('time', inplace=True)
+    return df
 
 def calculate_radiator_outputs(temperatures, radiator_scales, room_records, satisfaction, flow_t, target_t, room_flows_watts):
     rooms_rad_watts = {}
@@ -284,7 +287,7 @@ def calculate_target_temperature(t, room_name_alias):
 
     if real_setpoints_switch.active:
         if room_name_alias in house_data.room_setpoints:
-            realset = max(house_data.room_setpoints[room_name_alias].get(t) + setpoint_delta_slider.value, setpoint_minimum_slider.value)
+            realset = max(house_data.room_setpoints[room_name_alias].get(t, 21) + setpoint_delta_slider.value, setpoint_minimum_slider.value)
 
             if realset is not None:
                 target_t = realset
@@ -351,7 +354,7 @@ def work_out_energy_use(df):
     subset = df.filter(regex=r'.*_gain')
     print(subset)
     subsetsum = subset.sum(axis=1)
-    index_seconds = df['time'].astype(np.int64) // 1e9
+    index_seconds = df.index.astype(np.int64) // 1e9
     #print(index_seconds.head())
     # heat_gain_ds.data =dict(x=df['time'], y=heat_gain_df[room])
     kwh_output =  scipy.integrate.trapezoid(subset.sum(axis=1), index_seconds) / 3.6e6
@@ -402,6 +405,7 @@ weather_compensation_switch = Switch(active=False)
 width = Span(dimension="width", line_dash="dashed", line_width=2)
 height = Span(dimension="height", line_dash="dotted", line_width=2)
 df = calculate_data(room)
+print(df['available_radiator_power'])
 energy_text = work_out_energy_use(df)
 room_colours = plasma(len(data['rooms']))
 axs = []
@@ -452,6 +456,8 @@ axs[4].yaxis.axis_label = 'Power'
 axs[4].title = 'Room heat gain'
 axs[4].line(x='time', y='gain_for_room_unbounded', source=main_ds, line_color='yellow')
 axs[4].line(x='time', y='gain_for_room', source=main_ds)
+axs[4].line(x='time', y='available_radiator_power', source=main_ds, line_color='grey', alpha=0.4)
+
 
 axs[6].title = 'Flow temperature'
 axs[6].yaxis.axis_label = 'Celsius'
