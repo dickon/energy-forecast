@@ -172,34 +172,18 @@ def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
             # room flows are normally negative, so we invert the series for the chart so it is readable
             recs.setdefault(f'{room_name}_loss', []).append(-room_flows_watts[room_name])
             
+        
         for phase in [0,1]:
-            house_rad_output_watts = 0
-            for room_name_alias, room_name, room_data in room_records:                                        
-                available_rad_watts = 0
-                for rad in room_data['radiators']:
-                    temperatures.setdefault(room_name, 21)
-                    rad_delta_t = max(0, flow_t - temperatures[room_name])
-                    rad_watts = (rad['heat50k'] *radiator_scales[room_name] * rad_delta_t / 50)
-                    available_rad_watts += rad_watts
-                if temperatures[room_name] < target_t_lagged-0.25:
-                    # room too cold; rads run flat out
-                    room_rad_watts= available_rad_watts*satisfaction
-                elif temperatures[room_name] < target_t_lagged+0.25:
-                    # room about right; rads run at heat output
-                    room_rad_watts = min(available_rad_watts*satisfaction, max(-room_flows_watts[room_name], 0))
-                else:
-                    # room too hot; rads off
-                    room_rad_watts = 0
-                if False:
-                    print(f'{room_name} output {room_rad_watts} of {available_rad_watts} satisfaction={satisfaction} temp={temperatures[room_name]} target={target_t_lagged}  available power={available_rad_watts}')
+            rooms_rad_watts = calculate_radiator_outputs(temperatures, radiator_scales, room_records, satisfaction, flow_t, target_t_lagged, room_flows_watts)
 
-                assert room_rad_watts <= available_rad_watts*satisfaction, room_rad_watts
-                room_net_flow_watts = room_flows_watts[room_name] + room_rad_watts
+            house_rad_output_watts = 0
+            for _, room_name, room_data in room_records:                                                    
+                room_net_flow_watts = room_flows_watts[room_name] + rooms_rad_watts[room_name]
                 
-                house_rad_output_watts += room_rad_watts
+                house_rad_output_watts += rooms_rad_watts[room_name]
 
                 if phase == 1:
-                    recs.setdefault(room_name+'_gain', []).append(room_rad_watts)
+                    recs.setdefault(room_name+'_gain', []).append(rooms_rad_watts[room_name])
                     temp_change = room_net_flow_watts * interval_minutes / 60 / (room_data['volume']*temperature_change_factor_slider.value)
                     orig_temp = temperatures[room_name]
                     temperatures[room_name] += temp_change
@@ -247,6 +231,31 @@ def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
     df = pd.DataFrame(recs)
     set_room_pointer_columns(room, df)
     return df
+
+def calculate_radiator_outputs(temperatures, radiator_scales, room_records, satisfaction, flow_t, target_t_lagged, room_flows_watts):
+    rooms_rad_watts = {}
+    for _, room_name, room_data in room_records:                                        
+        available_rad_watts = calculate_available_radiator_watts(temperatures, radiator_scales, flow_t, room_name, room_data)
+        if temperatures[room_name] < target_t_lagged-0.25:
+                    # room too cold; rads run flat out
+            room_rad_watts= available_rad_watts*satisfaction
+        elif temperatures[room_name] < target_t_lagged+0.25:
+                    # room about right; rads run at heat output
+            room_rad_watts = min(available_rad_watts*satisfaction, max(-room_flows_watts[room_name], 0))
+        else:
+                    # room too hot; rads off
+            room_rad_watts = 0
+        rooms_rad_watts[room_name] = room_rad_watts
+    return rooms_rad_watts
+
+def calculate_available_radiator_watts(temperatures, radiator_scales, flow_t, room_name, room_data):
+    available_rad_watts = 0
+    for rad in room_data['radiators']:
+        temperatures.setdefault(room_name, 21)
+        rad_delta_t = max(0, flow_t - temperatures[room_name])
+        rad_watts = (rad['heat50k'] *radiator_scales[room_name] * rad_delta_t / 50)
+        available_rad_watts += rad_watts
+    return available_rad_watts
 
 def work_out_room_flow(temperatures, room_name, room_data):
     room_tot_flow_watts = 0
