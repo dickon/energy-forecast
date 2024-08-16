@@ -127,7 +127,7 @@ house_data = load_house_data()
 with open('heatmodel.json', 'r') as f:
     data = json.load(f)
 
-def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
+def calculate_data(focus_room: str='', verbose: bool = False) -> pd.DataFrame:
     temperatures = {}
     start_t = t = pytz.utc.localize(datetime.fromtimestamp(day_range_slider.value[0]/1000))
     end_t = pytz.utc.localize(datetime.fromtimestamp(day_range_slider.value[-1]/1000))
@@ -157,14 +157,13 @@ def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
 
         # work out the target temperature for all rooms, plus a lagged set of values to reflect system response time
         target_ts= {}
-        target_ts_delayed = {}
+        target_ts_lagged = {}
         for room_name_alias, room_name, room_data in room_records:
             target_t, target_t_lagged = calculate_target_temperature(t, room_name_alias)
-            recs.setdefault(room_name+"_setpoint", []).append(target_t)
-            recs.setdefault(room_name+"_setpoint_lagged", []).append(target_t_lagged)
             target_ts[room_name] = target_t
-            target_ts_delayed[room_name] = target_ts_delayed
-
+            target_ts_lagged[room_name] = target_t_lagged
+        recs.setdefault("setpoint", []).append(target_ts[focus_room])
+        recs.setdefault("setpoint_lagged", []).append(target_ts_lagged[focus_room])
 
         # work out heat loss for each room
         room_flows_watts = {}
@@ -172,9 +171,10 @@ def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
             room_flows_watts[room_name] = work_out_room_flow(temperatures, room_name, room_data)
             # room flows are normally negative, so we invert the series for the chart so it is readable
             recs.setdefault(f'{room_name}_loss', []).append(-room_flows_watts[room_name])
-            
+        recs.setdefault('loss_for_room', []).append(-room_flows_watts[focus_room])
         # work out radiator output if the heat source is infinite
         rooms_rad_watts_unbounded = calculate_radiator_outputs(temperatures, radiator_scales, room_records, 1.0, flow_t, target_t_lagged, room_flows_watts)
+        recs.setdefault('gain_for_room_unbounded', []).append(rooms_rad_watts_unbounded[focus_room])
         ideal_power_out = max(500, sum(rooms_rad_watts_unbounded.values()))
 
         # now work out how much of unbounded heat output can actually be satisfied by the boiler
@@ -186,7 +186,6 @@ def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
             room_net_flow_watts = room_flows_watts[room_name] + rooms_rad_watts[room_name]
             
             recs.setdefault(room_name+'_gain', []).append(rooms_rad_watts[room_name])
-            recs.setdefault(room_name+'_gain_unbounded', []).append(rooms_rad_watts_unbounded[room_name])
             temp_change = room_net_flow_watts * interval_minutes / 60 / (room_data['volume']*temperature_change_factor_slider.value)
             orig_temp = temperatures[room_name]
             temperatures[room_name] += temp_change
@@ -206,6 +205,7 @@ def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
 
             if verbose:
                 print(f'   Total room net flow={room_net_flow_watts:.0f}W area {room_data['area']:.0f}qm^2 temperature +{temp_change}->{temperatures[room_name]}')
+        recs.setdefault('gain_for_room', []).append(rooms_rad_watts[focus_room])
         if False or actual_power_out > power_slider.value:
             print('total rad output', actual_power_out, 'c/w', power_slider.value, 'satisfaction', satisfaction)
         
@@ -217,16 +217,13 @@ def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
 
         for k,v  in temperatures.items():
             recs.setdefault(k+'_temperature', []).append(v)
-        for k in data['rooms'].keys():
-            recs.setdefault(k+'_power_error', []).append(discrepanices.get(k, 0))
+        recs.setdefault('temperature', []).append(temperatures[focus_room])
+        recs.setdefault('power_error', []).append(discrepanices[focus_room])
         #assert house_rad_output_watts >= 0, (house_rad_output_watts, power_slider.value, satisfaction, ideal_power_out)
         recs.setdefault('output_power', []).append(actual_power_out)
         t += timedelta(minutes=interval_minutes)
 
-    df = pd.DataFrame(recs)
-    set_room_pointer_columns(room, df)
-    print(df['gain_for_room_unbounded'])
-    return df
+    return pd.DataFrame(recs)
 
 def calculate_radiator_outputs(temperatures, radiator_scales, room_records, satisfaction, flow_t, target_t, room_flows_watts):
     rooms_rad_watts = {}
@@ -304,14 +301,6 @@ def calculate_room_name_alias(room_name):
         room_name_alias = 'Guest suite'
     return room_name_alias
 
-def set_room_pointer_columns(room, df):
-    df['loss_for_room'] = df[room+'_loss']
-    df['gain_for_room'] = df[room+'_gain']
-    df['gain_for_room_unbounded'] = df[room+'_gain_unbounded']
-    df['power_error'] = df[room+'_power_error']
-    df['temperature'] = df[room+'_temperature']
-    df['setpoint'] = df[room+'_setpoint']
-    df['setpoint_lagged'] = df[room+'_setpoint_lagged']
 
 def calculate_flow_temperature(temperatures, t):
     if real_temperatures_switch.active:
