@@ -161,6 +161,7 @@ def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
         for room_name_alias, room_name, room_data in room_records:
             target_t, target_t_lagged = calculate_target_temperature(t, room_name_alias)
             recs.setdefault(room_name+"_setpoint", []).append(target_t)
+            recs.setdefault(room_name+"_setpoint_lagged", []).append(target_t_lagged)
             target_ts[room_name] = target_t
             target_ts_delayed[room_name] = target_ts_delayed
 
@@ -307,6 +308,7 @@ def set_room_pointer_columns(room, df):
     df['power_error'] = df[room+'_power_error']
     df['temperature'] = df[room+'_temperature']
     df['setpoint'] = df[room+'_setpoint']
+    df['setpoint_lagged'] = df[room+'_setpoint_lagged']
 
 def calculate_flow_temperature(temperatures, t):
     if real_temperatures_switch.active:
@@ -431,6 +433,7 @@ room = list(data['rooms'].keys())[room_select.active]
 col = room_colours[room_select.active]
 axs[1].line(x='time', y='temperature',  source= main_ds,  line_width=2, color='blue')
 axs[1].line(x='time', y='setpoint',  source=main_ds,  line_width=2, color='red')
+axs[1].line(x='time', y='setpoint_lagged',  source=main_ds,  line_width=2, color='pink')
 axs[3].title = f'{room} power discrepanices'
 #axs[i+3].y_range = Range1d(10, 25)
 #axs[i+3].extra_y_ranges = {"power":Range1d(start=-2000, end=2000)}
