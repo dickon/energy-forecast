@@ -186,6 +186,7 @@ def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
             room_net_flow_watts = room_flows_watts[room_name] + rooms_rad_watts[room_name]
             
             recs.setdefault(room_name+'_gain', []).append(rooms_rad_watts[room_name])
+            recs.setdefault(room_name+'_gain_unbounded', []).append(rooms_rad_watts_unbounded[room_name])
             temp_change = room_net_flow_watts * interval_minutes / 60 / (room_data['volume']*temperature_change_factor_slider.value)
             orig_temp = temperatures[room_name]
             temperatures[room_name] += temp_change
@@ -224,6 +225,7 @@ def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
 
     df = pd.DataFrame(recs)
     set_room_pointer_columns(room, df)
+    print(df['gain_for_room_unbounded'])
     return df
 
 def calculate_radiator_outputs(temperatures, radiator_scales, room_records, satisfaction, flow_t, target_t, room_flows_watts):
@@ -305,6 +307,7 @@ def calculate_room_name_alias(room_name):
 def set_room_pointer_columns(room, df):
     df['loss_for_room'] = df[room+'_loss']
     df['gain_for_room'] = df[room+'_gain']
+    df['gain_for_room_unbounded'] = df[room+'_gain_unbounded']
     df['power_error'] = df[room+'_power_error']
     df['temperature'] = df[room+'_temperature']
     df['setpoint'] = df[room+'_setpoint']
@@ -458,6 +461,7 @@ axs[5].line(x='time', y='loss_for_room', source=main_ds)
 
 axs[4].yaxis.axis_label = 'Power'
 axs[4].title = 'Room heat gain'
+axs[4].line(x='time', y='gain_for_room_unbounded', source=main_ds, line_color='yellow')
 axs[4].line(x='time', y='gain_for_room', source=main_ds)
 
 axs[6].title = 'Flow temperature'
