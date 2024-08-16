@@ -167,7 +167,7 @@ def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
         for phase in [0,1]:
             house_rad_output_watts = 0
             for room_name_alias, room_name, room_data in room_records:                    
-                room_tot_flow_watts = work_out_room_flow(room, temperatures, room_name, room_data)
+                room_tot_flow_watts = work_out_room_flow(temperatures, room_name, room_data)
                 if phase == 1:               
                     if False and room == 'Master suite':
                         print(f' total {room_tot_flow_watts:.0f}W')         
@@ -247,7 +247,7 @@ def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
     set_room_pointer_columns(room, df)
     return df
 
-def work_out_room_flow(room, temperatures, room_name, room_data):
+def work_out_room_flow(temperatures, room_name, room_data):
     room_tot_flow_watts = 0
     temperatures.setdefault(room_name, 20)
     delta_t = temperatures['external'] - temperatures[room_name]
