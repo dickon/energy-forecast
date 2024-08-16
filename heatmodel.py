@@ -135,10 +135,7 @@ def calculate_data(room: str='') -> pd.DataFrame:
     radiator_scales = scale_radiators()
     
     cursor = 0
-    powers = []
-    satisfactions = []
-    recs = { "time":[], "output_power":powers, "input_power":[],  "satisfactions":satisfactions, "meters":[]}
-
+    recs = {}
     while t < end_t:
         while cursor+ 1< len(house_data.outside_temperatures) and house_data.outside_temperatures[cursor+1].time < t:
             cursor += 1
@@ -150,9 +147,9 @@ def calculate_data(room: str='') -> pd.DataFrame:
             flow_t = flow_t + flow_temperature_reading_offset_slider.value
         rec = house_data.outside_temperatures[cursor]
         gas_reading = house_data.gas_readings.get(t, 0.0)
-        recs['meters'].append(gas_reading)
+        recs.setdefault('meters', []).append(gas_reading)
         temperatures['external'] = rec.temperature
-        recs['time'].append(t)
+        recs.setdefault('time', []).append(t)
         satisfaction = 1.0
         if not real_temperatures_switch.active:
             if weather_compensation_switch.active:
@@ -280,7 +277,7 @@ def calculate_data(room: str='') -> pd.DataFrame:
                 # if we need 5 kw and system power is 10kw then satisfaction = 1.0
                 ideal_power_out = house_rad_output_watts
                 satisfaction =  min(1.0, power_slider.value / ideal_power_out)
-                recs['satisfactions'].append(satisfaction)
+                recs.setdefault('satisfactions', []).append(satisfaction)
             if phase == 1:
                 if False or house_rad_output_watts > power_slider.value:
                     print('total rad output', house_rad_output_watts, 'c/w', power_slider.value, 'satisfaction', satisfaction)
@@ -296,7 +293,7 @@ def calculate_data(room: str='') -> pd.DataFrame:
         for k in data['rooms'].keys():
             recs.setdefault(k+'_power_error', []).append(discrepanices.get(k, 0))
         #assert house_rad_output_watts >= 0, (house_rad_output_watts, power_slider.value, satisfaction, ideal_power_out)
-        powers.append(house_rad_output_watts)
+        recs.setdefault('output_power', []).append(house_rad_output_watts)
 
     df = pd.DataFrame(recs)
     df['loss_for_room'] = df[room+'_loss']
