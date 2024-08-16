@@ -225,18 +225,18 @@ def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
     set_room_pointer_columns(room, df)
     return df
 
-def calculate_radiator_outputs(temperatures, radiator_scales, room_records, satisfaction, flow_t, target_t_lagged, room_flows_watts):
+def calculate_radiator_outputs(temperatures, radiator_scales, room_records, satisfaction, flow_t, target_t, room_flows_watts):
     rooms_rad_watts = {}
     for _, room_name, room_data in room_records:                                        
         available_rad_watts = calculate_available_radiator_watts(temperatures, radiator_scales, flow_t, room_name, room_data)
-        if temperatures[room_name] < target_t_lagged-0.25:
-                    # room too cold; rads run flat out
+        if temperatures[room_name] < target_t-0.25:
+            # room too cold; rads run flat out
             room_rad_watts= available_rad_watts*satisfaction
-        elif temperatures[room_name] < target_t_lagged+0.25:
-                    # room about right; rads run at heat output
+        elif temperatures[room_name] < target_t+0.25:
+            # room about right; rads run at heat output
             room_rad_watts = min(available_rad_watts*satisfaction, max(-room_flows_watts[room_name], 0))
         else:
-                    # room too hot; rads off
+            # room too hot; rads off
             room_rad_watts = 0
         rooms_rad_watts[room_name] = room_rad_watts
     return rooms_rad_watts
