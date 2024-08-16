@@ -151,17 +151,15 @@ def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
         weather_compensation_ratio = 1.0
         room_powers = {}
         discrepanices = {}
+        room_records = [ (calculate_room_name_alias(room_name), room_name, room_data) for (room_name, room_data) in data['rooms'].items() ]
         for phase in [0,1]:
             house_rad_output_watts = 0
-            for room_index, (room_name, room_data) in enumerate(data['rooms'].items()):
-                room_name_alias = calculate_room_name_alias(room_name)
+            for room_name_alias, room_name, room_data in room_records:
 
                 target_t, target_t_lagged = calculate_target_temperature(t, room_name_alias)
                 if phase == 1:
                     recs.setdefault(room_name+"_setpoint", []).append(target_t)
 
-                verbose = room_name == 'Downstairs study'  and False
-                #print(room_name)
                 room_tot_flow_watts = 0
                 temperatures.setdefault(room_name, 20)
                 delta_t = temperatures['external'] - temperatures[room_name]
