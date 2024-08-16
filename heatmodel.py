@@ -134,6 +134,8 @@ def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
     print('start', start_t, "end", end_t)
     radiator_scales = scale_radiators()
     
+    room_records = [ (calculate_room_name_alias(room_name), room_name, room_data) for (room_name, room_data) in data['rooms'].items() ]
+
     cursor = 0
     recs = {}
     while t < end_t:
@@ -151,7 +153,6 @@ def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
         weather_compensation_ratio = 1.0
         room_powers = {}
         discrepanices = {}
-        room_records = [ (calculate_room_name_alias(room_name), room_name, room_data) for (room_name, room_data) in data['rooms'].items() ]
 
 
         # work out the target temperature for all rooms, plus a lagged set of values to reflect system response time
