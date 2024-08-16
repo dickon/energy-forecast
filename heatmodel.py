@@ -147,33 +147,16 @@ def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
         flow_t = calculate_flow_temperature(temperatures, t)
         recs.setdefault('flow_temperature', []).append(flow_t)
 
-        efficiency = calculate_gas_efficiency(flow_t - 20.0)
 
         weather_compensation_ratio = 1.0
         room_powers = {}
         discrepanices = {}
         for phase in [0,1]:
-            if False:
-                print()
-                print(t, phase)
             house_rad_output_watts = 0
             for room_index, (room_name, room_data) in enumerate(data['rooms'].items()):
-                target_t_lagged = target_t = (setpoint_slider.value if room_name != 'Master suite' else setpoint_slider.value)
-                room_name_alias = room_name
-                if room_name_alias == 'Medal area' or room_name_alias == 'Downstairs toilet' or room_name_alias == 'Dining room': 
-                    room_name_alias = 'Lounge'
-                if room_name_alias == 'Guest suite shower room':
-                    room_name_alias = 'Guest suite'
+                room_name_alias = calculate_room_name_alias(room_name)
 
-                if real_setpoints_switch.active:
-                    if room_name_alias in house_data.room_setpoints:
-                        realset = max(house_data.room_setpoints[room_name_alias].get(t) + setpoint_delta_slider.value, setpoint_minimum_slider.value)
-
-                        if realset is not None:
-                            target_t = realset
-                        realset_lagged = max(house_data.room_setpoints[room_name_alias].get(t-timedelta(minutes=radiator_response_time_slider.value)) + setpoint_delta_slider.value, setpoint_minimum_slider.value)
-                        if realset_lagged is not None:
-                            target_t_lagged = realset_lagged
+                target_t, target_t_lagged = calculate_target_temperature(t, room_name_alias)
                 if phase == 1:
                     recs.setdefault(room_name+"_setpoint", []).append(target_t)
 
@@ -187,8 +170,6 @@ def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
                 if False:
                     print(f'{room_name} infiltration={infiltration_watts} from delta T {delta_t}')
                 room_tot_flow_watts += infiltration_watts
-                if not (t.hour >= 6 and t.hour < 23):
-                    target_t_lagged -= night_set_back_slider.value
                 for elem in room_data['elements']:
                     try:
                         id = elem['id']
@@ -271,6 +252,7 @@ def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
                     print('total rad output', house_rad_output_watts, 'c/w', power_slider.value, 'satisfaction', satisfaction)
                 
                 #assert house_rad_output_watts <= power_slider.value*1.001, (house_rad_output_watts, power_slider.value, satisfaction, ideal_power_out)
+                efficiency = calculate_gas_efficiency(flow_t - 20.0)
                 recs.setdefault('input_power', []).append ( house_rad_output_watts / efficiency )
                 if False:
                     print(f'{t} power {house_rad_output_watts/1e3:.1f}kW (ideal:{ideal_power_out/1e3:.1f}kW) inside={temperatures['Downstairs study']:.1f}C outside={temperatures['external']:.1f}C power={house_rad_output_watts} satisfaction={satisfaction*100:.0f}%')
@@ -284,12 +266,37 @@ def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
         t += timedelta(minutes=interval_minutes)
 
     df = pd.DataFrame(recs)
+    set_room_pointer_columns(room, df)
+    return df
+
+def calculate_target_temperature(t, room_name_alias):
+    target_t_lagged = target_t = setpoint_slider.value - (night_set_back_slider.value if (t.hour < 6 or t.hour <= 23) else 0 )
+
+    if real_setpoints_switch.active:
+        if room_name_alias in house_data.room_setpoints:
+            realset = max(house_data.room_setpoints[room_name_alias].get(t) + setpoint_delta_slider.value, setpoint_minimum_slider.value)
+
+            if realset is not None:
+                target_t = realset
+            realset_lagged = max(house_data.room_setpoints[room_name_alias].get(t-timedelta(minutes=radiator_response_time_slider.value)) + setpoint_delta_slider.value, setpoint_minimum_slider.value)
+            if realset_lagged is not None:
+                target_t_lagged = realset_lagged
+    return target_t,target_t_lagged
+
+def calculate_room_name_alias(room_name):
+    room_name_alias = room_name
+    if room_name_alias == 'Medal area' or room_name_alias == 'Downstairs toilet' or room_name_alias == 'Dining room': 
+        room_name_alias = 'Lounge'
+    if room_name_alias == 'Guest suite shower room':
+        room_name_alias = 'Guest suite'
+    return room_name_alias
+
+def set_room_pointer_columns(room, df):
     df['loss_for_room'] = df[room+'_loss']
     df['gain_for_room'] = df[room+'_gain']
     df['power_error'] = df[room+'_power_error']
     df['temperature'] = df[room+'_temperature']
     df['setpoint'] = df[room+'_setpoint']
-    return df
 
 def calculate_flow_temperature(temperatures, t):
     if real_temperatures_switch.active:
