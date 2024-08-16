@@ -140,26 +140,16 @@ def calculate_data(room: str='') -> pd.DataFrame:
         while cursor+ 1< len(house_data.outside_temperatures) and house_data.outside_temperatures[cursor+1].time < t:
             cursor += 1
         next_t = t + timedelta(minutes=interval_minutes)
-        flow_t = house_data.flow_temperatures.get(t)
-        if flow_t is None:
-            flow_t = flow_temperature_slider.value
-        else:
-            flow_t = flow_t + flow_temperature_reading_offset_slider.value
+
         rec = house_data.outside_temperatures[cursor]
-        gas_reading = house_data.gas_readings.get(t, 0.0)
-        recs.setdefault('meters', []).append(gas_reading)
+        recs.setdefault('meters', []).append(house_data.gas_readings.get(t, 0.0))
         temperatures['external'] = rec.temperature
         recs.setdefault('time', []).append(t)
         satisfaction = 1.0
-        if not real_temperatures_switch.active:
-            if weather_compensation_switch.active:
-                flow_t = flow_temperature_slider.value + weather_compensation_ratio_slider.value * max(0, weather_compensation_threshold_slider.value - temperatures['external']) - weather_compensation_ratio_slider.value / 2
-            else:
-                flow_t = flow_temperature_slider.value
-        recs.setdefault('send_temperature', []).append(flow_t)
+        flow_t = calculate_flow_temperature(temperatures, t)
+        recs.setdefault('flow_temperature', []).append(flow_t)
 
-        return_t = flow_t - 20.0
-        efficiency = calculate_gas_efficiency(return_t)
+        efficiency = calculate_gas_efficiency(flow_t - 20.0)
 
         weather_compensation_ratio = 1.0
         room_powers = {}
@@ -303,6 +293,17 @@ def calculate_data(room: str='') -> pd.DataFrame:
     df['setpoint'] = df[room+'_setpoint']
     return df
 
+def calculate_flow_temperature(temperatures, t):
+    if real_temperatures_switch.active:
+        flow_t_recorded = house_data.flow_temperatures.get(t)
+        flow_t = flow_temperature_slider.value if flow_t_recorded is None else flow_t_recorded + flow_temperature_reading_offset_slider.value
+    else:
+        if weather_compensation_switch.active:
+            flow_t = flow_temperature_slider.value + weather_compensation_ratio_slider.value * max(0, weather_compensation_threshold_slider.value - temperatures['external']) - weather_compensation_ratio_slider.value / 2
+        else:
+            flow_t = flow_temperature_slider.value
+    return flow_t
+
 def scale_radiators():
     radiator_scales = {}
     total_base_rad_power = 0
@@ -443,7 +444,7 @@ axs[4].line(x='time', y='gain_for_room', source=main_ds)
 
 axs[6].title = 'Flow temperature'
 axs[6].yaxis.axis_label = 'Celsius'
-axs[6].line(x='time', y='send_temperature', source=main_ds)
+axs[6].line(x='time', y='flow_temperature', source=main_ds)
 
 axs[7].title = 'Satisfaction'
 axs[7].yaxis.axis_label = 'Ratio'
