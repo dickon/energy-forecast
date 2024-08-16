@@ -167,34 +167,7 @@ def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
         for phase in [0,1]:
             house_rad_output_watts = 0
             for room_name_alias, room_name, room_data in room_records:                    
-                room_tot_flow_watts = 0
-                temperatures.setdefault(room_name, 20)
-                delta_t = temperatures['external'] - temperatures[room_name]
-
-                infiltration_watts = room_data['air_change_an_hour'] * air_factor_slider.value * room_data['volume'] * delta_t
-                if False:
-                    print(f'{room_name} infiltration={infiltration_watts} from delta T {delta_t}')
-                room_tot_flow_watts += infiltration_watts
-                for elem in room_data['elements']:
-                    try:
-                        id = elem['id']
-                    except TypeError:
-                        continue
-                    elem_rec = data['elements'][id]
-                    target = elem['boundary']
-                    temperatures.setdefault(target, 20)
-                    other_temperature = temperatures.get(target)
-                    room_temperature = temperatures.get(room_name)
-                    delta_t =  other_temperature - room_temperature
-                    elem_type = elem_rec['type']
-                    elem_area = elem_rec['A']
-                    elem_type_rec = data['element_type'][elem_type]
-                    elem_type_u = elem_type_rec['uvalue']
-                    watts_per_kelvin = elem_type_u * elem_area
-                    flow_watts = delta_t * watts_per_kelvin 
-                    if False and room == 'Master suite' and phase == 1:
-                        print(f'  {elem_rec["width"]:.02f}*{elem_rec["height"]:.02f} {elem_rec["type"]} WK={watts_per_kelvin:.1f} to {elem["boundary"]}@{other_temperature}dT{delta_t} flow={flow_watts:.0f}W')
-                    room_tot_flow_watts += flow_watts
+                room_tot_flow_watts = work_out_room_flow(room, temperatures, room_name, room_data)
                 if phase == 1:               
                     if False and room == 'Master suite':
                         print(f' total {room_tot_flow_watts:.0f}W')         
@@ -273,6 +246,35 @@ def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
     df = pd.DataFrame(recs)
     set_room_pointer_columns(room, df)
     return df
+
+def work_out_room_flow(room, temperatures, room_name, room_data):
+    room_tot_flow_watts = 0
+    temperatures.setdefault(room_name, 20)
+    delta_t = temperatures['external'] - temperatures[room_name]
+
+    infiltration_watts = room_data['air_change_an_hour'] * air_factor_slider.value * room_data['volume'] * delta_t
+    if False:
+        print(f'{room_name} infiltration={infiltration_watts} from delta T {delta_t}')
+    room_tot_flow_watts += infiltration_watts
+    for elem in room_data['elements']:
+        try:
+            id = elem['id']
+        except TypeError:
+            continue
+        elem_rec = data['elements'][id]
+        target = elem['boundary']
+        temperatures.setdefault(target, 20)
+        other_temperature = temperatures.get(target)
+        room_temperature = temperatures.get(room_name)
+        delta_t =  other_temperature - room_temperature
+        elem_type = elem_rec['type']
+        elem_area = elem_rec['A']
+        elem_type_rec = data['element_type'][elem_type]
+        elem_type_u = elem_type_rec['uvalue']
+        watts_per_kelvin = elem_type_u * elem_area
+        flow_watts = delta_t * watts_per_kelvin 
+        room_tot_flow_watts += flow_watts
+    return room_tot_flow_watts
 
 def calculate_target_temperature(t, room_name_alias):
     target_t_lagged = target_t = setpoint_slider.value - (night_set_back_slider.value if (t.hour < 6 or t.hour <= 23) else 0 )
