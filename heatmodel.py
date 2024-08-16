@@ -164,6 +164,8 @@ def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
             target_ts[room_name] = target_t
             target_ts_delayed[room_name] = target_ts_delayed
 
+
+        # work out heat loss for each room
         room_flows_watts = {}
         for _, room_name, room_data in room_records:                    
             room_flows_watts[room_name] = work_out_room_flow(temperatures, room_name, room_data)
@@ -172,22 +174,19 @@ def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
             
         for phase in [0,1]:
             house_rad_output_watts = 0
-            for room_name_alias, room_name, room_data in room_records:                    
-                    
+            for room_name_alias, room_name, room_data in room_records:                                        
                 available_rad_watts = 0
                 for rad in room_data['radiators']:
                     temperatures.setdefault(room_name, 21)
                     rad_delta_t = max(0, flow_t - temperatures[room_name])
                     rad_watts = (rad['heat50k'] *radiator_scales[room_name] * rad_delta_t / 50)
-                    if False and room_name == room:
-                        print(f'  { room_name} rad {rad["name"]} 50K {rad['heat50k']} rad delta T {rad_delta_t} scale { radiator_scales[room_name] } satisfaction { satisfaction } power {rad_watts:.0f}W')
                     available_rad_watts += rad_watts
                 if temperatures[room_name] < target_t_lagged-0.25:
                     # room too cold; rads run flat out
                     room_rad_watts= available_rad_watts*satisfaction
                 elif temperatures[room_name] < target_t_lagged+0.25:
                     # room about right; rads run at heat output
-                    room_rad_watts = min(available_rad_watts*satisfaction, max(-room_tot_flow_watts, 0))
+                    room_rad_watts = min(available_rad_watts*satisfaction, max(-room_flows_watts[room_name], 0))
                 else:
                     # room too hot; rads off
                     room_rad_watts = 0
@@ -195,13 +194,13 @@ def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
                     print(f'{room_name} output {room_rad_watts} of {available_rad_watts} satisfaction={satisfaction} temp={temperatures[room_name]} target={target_t_lagged}  available power={available_rad_watts}')
 
                 assert room_rad_watts <= available_rad_watts*satisfaction, room_rad_watts
-                room_tot_flow_watts += room_rad_watts
+                room_net_flow_watts = room_flows_watts[room_name] + room_rad_watts
                 
                 house_rad_output_watts += room_rad_watts
 
                 if phase == 1:
                     recs.setdefault(room_name+'_gain', []).append(room_rad_watts)
-                    temp_change = room_tot_flow_watts * interval_minutes / 60 / (room_data['volume']*temperature_change_factor_slider.value)
+                    temp_change = room_net_flow_watts * interval_minutes / 60 / (room_data['volume']*temperature_change_factor_slider.value)
                     orig_temp = temperatures[room_name]
                     temperatures[room_name] += temp_change
                     if real_temperatures_switch.active and room_name_alias in house_data.room_temperatures:
@@ -211,7 +210,7 @@ def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
                             actual_temp_change = realtemp - orig_temp
                             actual_flow = actual_temp_change * (room_data['volume']*temperature_change_factor_slider.value)
                             #print('actual flow', actual_flow, 'calculated', room_tot_flow, 'for', room_name, 'at', next_t)
-                            delta = actual_flow - room_tot_flow_watts
+                            delta = actual_flow - room_net_flow_watts
                             discrepanices[room_name] = delta
                             temperatures[room_name] = realtemp
                     else:
@@ -219,7 +218,7 @@ def calculate_data(room: str='', verbose: bool = False) -> pd.DataFrame:
                         pass
 
                     if verbose:
-                        print(f'   Total room flow={room_tot_flow_watts:.0f}W area {room_data['area']:.0f}qm^2 temperature +{temp_change}->{temperatures[room_name]}')
+                        print(f'   Total room net flow={room_net_flow_watts:.0f}W area {room_data['area']:.0f}qm^2 temperature +{temp_change}->{temperatures[room_name]}')
             if phase == 0:
                 if house_rad_output_watts == 0: house_rad_output_watts = 500
                 # if we need 20 kw and system power is 10kw then satisfaction = 0.5
