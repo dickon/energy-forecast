@@ -179,10 +179,20 @@ def calculate_data(focus_room: str='', verbose: bool = False) -> pd.DataFrame:
         ideal_power_out = max(500, sum(rooms_rad_watts_unbounded.values()))
 
         # now work out how much of unbounded heat output can actually be satisfied by the boiler
-        satisfaction =  min(1.0, power_slider.value / ideal_power_out)
+        if ideal_power_out < power_slider.value:
+            satisfaction = 1.0
+        else:
+            satisfaction =  power_slider.value * 0.95 / ideal_power_out
+        
         recs.setdefault('satisfactions', []).append(satisfaction)
-        rooms_rad_watts = calculate_radiator_outputs(temperatures, radiator_scales, room_records, satisfaction, flow_t, target_ts_lagged, room_flows_watts, t)
+        rooms_rad_watts = {k:v*satisfaction for k,v in rooms_rad_watts_unbounded.items()}
         actual_power_out = sum(rooms_rad_watts.values())
+        if actual_power_out > power_slider.value:
+            print('unbounded:')
+            pprint.pprint(rooms_rad_watts_unbounded)
+            print('bounded:')
+            pprint.pprint(rooms_rad_watts)
+            print('satisfaction', satisfaction, 'still using', actual_power_out, 'was', ideal_power_out,'c/w limit', power_slider.value, 'breakdown', rooms_rad_watts, 'ratio to ideal is', actual_power_out/power_slider.value)
         for _, room_name, room_data in room_records:                                                    
             room_net_flow_watts = room_flows_watts[room_name] + rooms_rad_watts[room_name]
             
@@ -242,13 +252,15 @@ def calculate_radiator_outputs(temperatures, radiator_scales, room_records, sati
             # room about right; rads run at heat output
             room_rad_watts = min(available_rad_watts*satisfaction, max(-room_flows_watts[room_name], 0))
             if verbose:
-                print(text, 'maintain at', room_rad_watts)
+                print(text, 'maintain at', room_rad_watts, 'avail', available_rad_watts, 'satisfaction', satisfaction, 'modulated avaialble', available_rad_watts*satisfaction, 'flow', room_flows_watts[room_name])
         else:
             # room too hot; rads off
             room_rad_watts = 0
             if verbose:
                 print(text, 'too hot')
         rooms_rad_watts[room_name] = room_rad_watts
+        if satisfaction < 1.0:
+            print(room_name, 'use', room_rad_watts, 'c/w', available_rad_watts, 'satisfaction', satisfaction)
     return rooms_rad_watts
 
 def calculate_available_radiator_watts(temperatures, radiator_scales, flow_t, room_name, room_data):
