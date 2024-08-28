@@ -67,7 +67,7 @@ def cop(load_ratio=0.8, flow_temperature=40, outside_temperature=2, verbose=Fals
 
     rows = [25,35,40,45,50,55,60]
     if flow_temperature <= rows[0]:
-        print('WARNING: flow temperature lowest than', rows[0])
+        print('WARNING: flow temperature lowest than', rows[0]) 
     row_index = 0
     for i, temp in enumerate(rows):
         if i == len(rows)-1 or rows[i+1]>flow_temperature:
