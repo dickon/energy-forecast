@@ -31,7 +31,7 @@
         "uvalue": 2
       },
       "Floor to carport": {
-        "uvalue": 1.82
+        "uvalue": 1
       },
       "Sliding doors double glaze metal": {
         "uvalue": 1.8
@@ -47,7 +47,7 @@
         "width": 3.94,
         "length": 3.461,
         "height": 2.322,
-        "air_change_an_hour": 0.25,
+        "air_change_an_hour": 1,
         "elements": [
           {
             "id": 0,
@@ -96,7 +96,7 @@
             "temperature": 22,
             "deltaT": 0,
             "heat": 0,
-            "kwh": 0,
+            "kwh": 0,   
             "link": 4
           },
           {
@@ -112,7 +112,7 @@
         "radiators": [
           {
             "name": "Type 11 contemporary 1300x600 but underperforing; theoretically 1144",
-            "heat50k": 700,
+            "heat50k": 1144,
             "model": "pow",
             "heat": 666.5506260439784
           }
@@ -707,11 +707,11 @@
         "temperature": 22,
         "area": 31.904204999999997,
         "height": 2.67,
-        "air_change_an_hour": 0.5,
+        "air_change_an_hour": 0.2,
         "elements": [
           {
             "id": 28,
-            "boundary": "external",
+            "boundary": "garage",
             "temperature": -3,
             "deltaT": 25,
             "heat": 1451.6413275,
@@ -1220,8 +1220,8 @@
         ],
         "radiators": [
           {
-            "name": "Type 11 1980s 630x600",
-            "heat50k": 582,
+            "name": "Type 11 1980s 630x600 (overperforming, spec is 582",
+            "heat50k": 900,
             "model": "pow",
             "heat": 325.80440424191374
           }
@@ -1727,7 +1727,7 @@
         "width": 3.1,
         "height": 3.724,
         "A": 11.544400000000001,
-        "uvalue": 1.82,
+        "uvalue": 0.7,
         "wk": 21.010808000000004
       },
       {
