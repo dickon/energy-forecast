@@ -151,6 +151,7 @@ def calculate_data(focus_room: str='', verbose: bool = False) -> pd.DataFrame:
         rec = house_data.outside_temperatures[cursor]
         recs.setdefault('meters', []).append(house_data.gas_readings.get(t, 0.0))
         temperatures['external'] = rec.temperature
+        temperatures['carport'] = max(10, rec.temperature)
         recs.setdefault('time', []).append(t)
         satisfaction = 1.0
         flow_t = calculate_flow_temperature(temperatures, t)
@@ -286,7 +287,7 @@ def work_out_room_flow(temperatures, room_name, room_data):
     temperatures.setdefault(room_name, 20)
     delta_t = temperatures['external'] - temperatures[room_name]
 
-    infiltration_watts = room_data['air_change_an_hour'] * air_factor_slider.value * room_data['volume'] * delta_t
+    infiltration_watts = air_change_sliders[room_name].value * air_factor_slider.value * room_data['volume'] * delta_t
     if False:
         print(f'{room_name} infiltration={infiltration_watts} from delta T {delta_t}')
     room_tot_flow_watts += infiltration_watts
@@ -430,6 +431,11 @@ element_sliders = {}
 for material in sorted(data['element_type'].keys()):
     element_sliders[material] = Slider(title=f"U value for {material}", start=0, end=3, step=0.05, value=data['element_type'][material]['uvalue'])
     sliders.append(element_sliders[material])
+air_change_sliders = {}
+for room in room_keys:
+    air_change_sliders[room] = Slider(title=f'Air changes/h {room}', start=0, end=5, step=0.05, value=data['rooms'][room]['air_change_an_hour'] )
+    sliders.append(air_change_sliders[room])
+
 real_temperatures_switch = Switch(active=True)
 real_setpoints_switch = Switch(active=True)
 weather_compensation_switch = Switch(active=False)
