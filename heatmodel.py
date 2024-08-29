@@ -135,7 +135,7 @@ house_data = load_house_data()
 with open('heatmodel.json', 'r') as f:
     data = json.load(f)
 
-def calculate_data(focus_room: str='', verbose: bool = False) -> pd.DataFrame:
+def calculate_data(focus_room: str='', verbose: bool = False, samples=1000) -> pd.DataFrame:
     temperatures = {}
     start_t = t = pytz.utc.localize(datetime.fromtimestamp(day_range_slider.value[0]/1000))
     end_t = pytz.utc.localize(datetime.fromtimestamp(day_range_slider.value[-1]/1000))
@@ -243,8 +243,14 @@ def calculate_data(focus_room: str='', verbose: bool = False) -> pd.DataFrame:
         t += timedelta(minutes=interval_minutes)
 
     df = pd.DataFrame(recs)
-    df.set_index('time', inplace=True)
-    return df
+    if len(df) > samples:
+        df.set_index('time', inplace=True)
+        delta = end_t - start_t
+        delta_sample= delta / samples
+        rdf = df.resample(delta_sample).mean()
+        return rdf
+    else:
+        return df
 
 def calculate_radiator_outputs(temperatures, radiator_scales, room_records, satisfaction, flow_t, target_ts, room_flows_watts, timestamp, verbose=False):
     rooms_rad_watts = {}
