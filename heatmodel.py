@@ -135,7 +135,7 @@ house_data = load_house_data()
 with open('heatmodel.json', 'r') as f:
     data = json.load(f)
 
-def calculate_data(focus_room: str='', verbose: bool = False, samples=1000) -> pd.DataFrame:
+def calculate_data(focus_room: str='', verbose: bool = False, samples=1000, real_temperatures=True) -> pd.DataFrame:
     temperatures = {}
     start_t = t = pytz.utc.localize(datetime.fromtimestamp(day_range_slider.value[0]/1000))
     end_t = pytz.utc.localize(datetime.fromtimestamp(day_range_slider.value[-1]/1000))
@@ -154,9 +154,8 @@ def calculate_data(focus_room: str='', verbose: bool = False, samples=1000) -> p
         temperatures['carport'] = max(10, rec.temperature)
         recs.setdefault('time', []).append(t)
         satisfaction = 1.0
-        flow_t = calculate_flow_temperature(temperatures, t)
+        flow_t = calculate_flow_temperature(temperatures, t, real_temperatures)
         recs.setdefault('flow_temperature', []).append(flow_t)
-
 
         weather_compensation_ratio = 1.0
         room_powers = {}
@@ -208,7 +207,7 @@ def calculate_data(focus_room: str='', verbose: bool = False, samples=1000) -> p
             temp_change = room_net_flow_watts * interval_minutes / 60 / (room_data['volume']*temperature_change_factor_slider.value)
             orig_temp = temperatures[room_name]
             temperatures[room_name] += temp_change
-            if real_temperatures_switch.active:
+            if real_temperatures:
                 room_for_temp = LOCATION_REVERSE.get(room_name, room_name)
                 assert room_for_temp in house_data.room_temperatures, (room_name, house_data.room_temperatures.keys())
                 realtemp = house_data.room_temperatures[room_for_temp].get(t)
@@ -243,6 +242,7 @@ def calculate_data(focus_room: str='', verbose: bool = False, samples=1000) -> p
         t += timedelta(minutes=interval_minutes)
 
     df = pd.DataFrame(recs)
+    # if we have lots of data, then downsample to save network bandwidth and client load
     if len(df) > samples:
         df.set_index('time', inplace=True)
         delta = end_t - start_t
@@ -250,7 +250,12 @@ def calculate_data(focus_room: str='', verbose: bool = False, samples=1000) -> p
         rdf = df.resample(delta_sample).mean()
         return rdf
     else:
-        return df
+        rdf = df
+    if real_temperatures:
+        rdf_sim = calculate_data(room, real_temperatures=False)
+        rdf['simulated_temperature'] = rdf_sim['temperature']
+    rdf['time_str'] = rdf['time'].apply(lambda v: v.strftime('%a %d %b %y %H:%M'))
+    return rdf
 
 def calculate_radiator_outputs(temperatures, radiator_scales, room_records, satisfaction, flow_t, target_ts, room_flows_watts, timestamp, verbose=False):
     rooms_rad_watts = {}
@@ -340,8 +345,8 @@ def calculate_room_name_alias(room_name):
     return room_name_alias
 
 
-def calculate_flow_temperature(temperatures, t):
-    if real_temperatures_switch.active:
+def calculate_flow_temperature(temperatures, t, real_temperatures):
+    if real_temperatures:
         flow_t_recorded = house_data.flow_temperatures.get(t)
         flow_t = flow_temperature_slider.value if flow_t_recorded is None else flow_t_recorded + flow_temperature_reading_offset_slider.value
     else:
@@ -442,18 +447,18 @@ for room in room_keys:
     air_change_sliders[room] = Slider(title=f'Air changes/h {room}', start=0, end=5, step=0.05, value=data['rooms'][room]['air_change_an_hour'] )
     sliders.append(air_change_sliders[room])
 
-real_temperatures_switch = Switch(active=True)
 real_setpoints_switch = Switch(active=True)
 weather_compensation_switch = Switch(active=False)
 width = Span(dimension="width", line_dash="dashed", line_width=2)
 height = Span(dimension="height", line_dash="dotted", line_width=2)
-df = calculate_data(room)
+df = calculate_data(room, real_temperatures=True)
 energy_text = work_out_energy_use(df)
 room_colours = plasma(len(data['rooms']))
 axs = []
 
+TOOLTIPS = [("(x,y)", "(@time_str, $y)")]
 for i in range(8):
-    s = figure(height=400, width=800, x_axis_type='datetime', tools='hover,xwheel_zoom')
+    s = figure(height=400, width=800, x_axis_type='datetime', tools='hover,xwheel_zoom', tooltips=TOOLTIPS)
     s.add_tools(CrosshairTool(overlay=[width, height]))
     axs.append(s)
 
@@ -469,6 +474,8 @@ colours = {'external':'blue'}
 room = list(data['rooms'].keys())[room_select.active]
 col = room_colours[room_select.active]
 axs[1].line(x='time', y='temperature',  source= main_ds,  line_width=2, color='blue')
+axs[1].line(x='time', y='simulated_temperature',  source= main_ds,  line_width=2, color='lightgreen')
+
 axs[1].line(x='time', y='setpoint',  source=main_ds,  line_width=2, color='red')
 axs[1].line(x='time', y='setpoint_lagged',  source=main_ds,  line_width=2, color='pink')
 axs[3].title = f'{room} power discrepanices'
@@ -513,7 +520,6 @@ def change_room(attr, old, new):
 def heat_pump_mode_callback():
     weather_compensation_switch.active = True
     power_slider.value = 12000
-    real_temperatures_switch.active = False
     real_setpoints_switch.active = False
     minimum_rad_density_slider.value = 300
     do_callback()
@@ -521,7 +527,6 @@ def heat_pump_mode_callback():
 def boiler_mode_callback():
     weather_compensation_switch.active = False
     power_slider.value = 40000
-    real_temperatures_switch.active = True
     real_setpoints_switch.active = True
     minimum_rad_density_slider.value = 5
     do_callback()
@@ -541,7 +546,6 @@ full_year_button = Button(label='Switch to full year')
 full_year_button.on_click(go_full_year)
 layout = column([row([room_select])]+row_split(sliders, 4)+
     [row([
-        Div(text='Use historical temperatures'), real_temperatures_switch,
         Div(text='Use historical setpoints'), real_setpoints_switch,
         boiler_button,
         heat_pump_mode_button,
@@ -566,7 +570,7 @@ def do_callback():
 
 for slider in sliders:
     slider.on_change('value', update_data)
-for switch in [weather_compensation_switch, real_temperatures_switch, real_setpoints_switch]:
+for switch in [weather_compensation_switch, real_setpoints_switch]:
     switch.on_change('active', update_data)
 
 if __name__ == '__main__':
