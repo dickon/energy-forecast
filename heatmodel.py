@@ -175,7 +175,13 @@ def calculate_data(focus_room: str='', verbose: bool = False, samples: int =1000
         # work out heat loss for each room
         room_flows_watts = {}
         for _, room_name, room_data in room_records:                    
-            room_flows_watts[room_name] = work_out_room_flow(temperatures, room_name, room_data)
+            room_flows_watts[room_name], flow_by_type = work_out_room_flow(temperatures, room_name, room_data)
+            if room_name == focus_room:
+                for elemt, watts in flow_by_type.items():
+                    k = f'room_flow_{elemt}'
+                    recs.setdefault(k, []).append(max(0, -watts))
+                    gk = f'total_flow_{elemt}'
+                    recs.setdefault(gk, []).append(max(0, -watts))
             # room flows are normally negative, so we invert the series for the chart so it is readable
             recs.setdefault(f'{room_name}_loss', []).append(-room_flows_watts[room_name])
         recs.setdefault('loss_for_room', []).append(-room_flows_watts[focus_room])
@@ -302,6 +308,7 @@ def work_out_room_flow(temperatures, room_name, room_data):
     if False:
         print(f'{room_name} infiltration={infiltration_watts} from delta T {delta_t}')
     room_tot_flow_watts += infiltration_watts
+    room_flow_by_type = {}
     for elem in room_data['elements']:
         try:
             id = elem['id']
@@ -320,7 +327,9 @@ def work_out_room_flow(temperatures, room_name, room_data):
         watts_per_kelvin = elem_type_u * elem_area
         flow_watts = delta_t * watts_per_kelvin 
         room_tot_flow_watts += flow_watts
-    return room_tot_flow_watts
+        room_flow_by_type.setdefault(elem_type, 0)
+        room_flow_by_type[elem_type] += flow_watts
+    return room_tot_flow_watts, room_flow_by_type
 
 def calculate_target_temperature(t, room_name_alias):
     target_t_lagged = target_t = setpoint_slider.value - (night_set_back_slider.value if (t.hour < 6 or t.hour <= 23) else 0 )
@@ -401,7 +410,7 @@ def work_out_energy_use(df):
     return f'50th percentile power={subsetsum.quantile(0.5)/1e3:.1f}kW 90th percentile power={subsetsum.quantile(0.9)/1e3:.1f}kW 100th percentile power (max)={subsetsum.quantile(1.0)/1e3:.1f}kW total energy kwh output {kwh_output:.1f} metered {metered:.1f} input {kwh_input:.1f} efficency {100.0*kwh_output/ metered:.0f}%'
 
 room_keys = sorted(data['rooms'].keys())
-room_select = RadioGroup(labels=[str(x) for x in room_keys], active=0, inline=True)
+room_select = RadioGroup(labels=[str(x) for x in room_keys], active=1, inline=True)
 room = room_keys[room_select.active]
 
 power_slider =Slider(title='Heat source power', start=2000, end=40000, value=40000)
@@ -411,6 +420,10 @@ t0 = isoparse("2023-08-01T00:00:00Z")
 t1 = datetime.now()
 t0p = isoparse("2024-02-01T00:00:00Z")
 t1p = isoparse("2024-02-01T23:59:00Z")
+elements = sorted(data['element_type'].keys())
+element_colours = plasma(len(elements))
+room_colours = plasma(len(data['rooms']))
+
 day_range_slider = DateRangeSlider(width=800, start=t0, end=t1, value=(t0p,t1p))
 minimum_rad_density_slider = Slider(title='Minimum rad density', start=30, end=1000, value=5)
 weather_compensation_threshold_slider = Slider(title='Weather compensation threshold temperature', start=0, end=30, value=15, step=0.1)
@@ -439,12 +452,12 @@ sliders = [
     setpoint_minimum_slider
 ]
 element_sliders = {}
-for material in sorted(data['element_type'].keys()):
-    element_sliders[material] = Slider(title=f"U value for {material}", start=0, end=3, step=0.05, value=data['element_type'][material]['uvalue'])
+for i, material in enumerate(elements):
+    element_sliders[material] = Slider(title=f"U value for {material}", start=0, end=3, step=0.05, value=data['element_type'][material]['uvalue'], bar_color=element_colours[i])
     sliders.append(element_sliders[material])
 air_change_sliders = {}
-for room in room_keys:
-    air_change_sliders[room] = Slider(title=f'Air changes/h {room}', start=0, end=5, step=0.05, value=data['rooms'][room]['air_change_an_hour'] )
+for i, room in enumerate(room_keys):
+    air_change_sliders[room] = Slider(title=f'Air changes/h {room}', start=0, end=5, step=0.05, value=data['rooms'][room]['air_change_an_hour'], bar_color=room_colours[i])
     sliders.append(air_change_sliders[room])
 
 real_setpoints_switch = Switch(active=True)
@@ -453,7 +466,6 @@ width = Span(dimension="width", line_dash="dashed", line_width=2)
 height = Span(dimension="height", line_dash="dotted", line_width=2)
 df = calculate_data(room, real_temperatures=True)
 energy_text = work_out_energy_use(df)
-room_colours = plasma(len(data['rooms']))
 axs = []
 
 TOOLTIPS = [("(x,y)", "(@time_str, $y)")]
@@ -463,7 +475,7 @@ for i in range(8):
     axs.append(s)
 
 main_ds = ColumnDataSource(df)
-axs[0].varea_stack(x= 'time', stackers=[x+'_gain' for x in data['rooms'].keys()],  source=main_ds, color=room_colours)
+axs[0].varea_stack(x= 'time', stackers=[x+'_gain' for x in room_keys],  source=main_ds, color=room_colours)
 axs[0].scatter(x='time', y='meters', source=main_ds, color='black')
 
 #axs[0].legend.location = 'bottom_right'
@@ -471,7 +483,7 @@ axs[0].legend.background_fill_alpha = 0.5
 axs[0].title = 'Heat input, watts'
 
 colours = {'external':'blue'}
-room = list(data['rooms'].keys())[room_select.active]
+room = room_keys[room_select.active]
 col = room_colours[room_select.active]
 axs[1].line(x='time', y='temperature',  source= main_ds,  line_width=2, color='blue')
 axs[1].line(x='time', y='simulated_temperature',  source= main_ds,  line_width=2, color='lightgreen')
@@ -500,6 +512,7 @@ axs[5].yaxis.axis_label = 'Power'
 axs[5].title = 'Room heat loss'
 axs[5].line(x='time', y='loss_for_room', source=main_ds)
 
+axs[5].varea_stack(x='time', stackers=[f'room_flow_{k}' for k in elements], source=main_ds, color=element_colours)
 axs[4].yaxis.axis_label = 'Power'
 axs[4].title = 'Room heat gain'
 axs[4].line(x='time', y='gain_for_room_unbounded', source=main_ds, line_color='yellow')
