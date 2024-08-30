@@ -135,7 +135,7 @@ house_data = load_house_data()
 with open('heatmodel.json', 'r') as f:
     data = json.load(f)
 
-def calculate_data(focus_room: str='', verbose: bool = False, samples=1000, real_temperatures=True) -> pd.DataFrame:
+def calculate_data(focus_room: str='', verbose: bool = False, samples: int =1000, real_temperatures:bool =True) -> pd.DataFrame:
     temperatures = {}
     start_t = t = pytz.utc.localize(datetime.fromtimestamp(day_range_slider.value[0]/1000))
     end_t = pytz.utc.localize(datetime.fromtimestamp(day_range_slider.value[-1]/1000))
