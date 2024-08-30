@@ -300,15 +300,14 @@ def calculate_available_radiator_watts(temperatures, radiator_scales, flow_t, ro
     return available_rad_watts
 
 def work_out_room_flow(temperatures, room_name, room_data):
-    room_tot_flow_watts = 0
     temperatures.setdefault(room_name, 20)
     delta_t = temperatures['external'] - temperatures[room_name]
 
     infiltration_watts = air_change_sliders[room_name].value * air_factor_slider.value * room_data['volume'] * delta_t
     if False:
         print(f'{room_name} infiltration={infiltration_watts} from delta T {delta_t}')
-    room_tot_flow_watts += infiltration_watts
-    room_flow_by_type = {}
+    room_tot_flow_watts = infiltration_watts
+    room_flow_by_type = {'air': infiltration_watts}
     for elem in room_data['elements']:
         try:
             id = elem['id']
@@ -329,6 +328,7 @@ def work_out_room_flow(temperatures, room_name, room_data):
         room_tot_flow_watts += flow_watts
         room_flow_by_type.setdefault(elem_type, 0)
         room_flow_by_type[elem_type] += flow_watts
+
     return room_tot_flow_watts, room_flow_by_type
 
 def calculate_target_temperature(t, room_name_alias):
@@ -420,7 +420,7 @@ t0 = isoparse("2023-08-01T00:00:00Z")
 t1 = datetime.now()
 t0p = isoparse("2024-02-01T00:00:00Z")
 t1p = isoparse("2024-02-01T23:59:00Z")
-elements = sorted(data['element_type'].keys())
+elements = ['air']+sorted(data['element_type'].keys())
 element_colours = plasma(len(elements))
 room_colours = plasma(len(data['rooms']))
 
@@ -453,8 +453,9 @@ sliders = [
 ]
 element_sliders = {}
 for i, material in enumerate(elements):
-    element_sliders[material] = Slider(title=f"U value for {material}", start=0, end=3, step=0.05, value=data['element_type'][material]['uvalue'], bar_color=element_colours[i])
-    sliders.append(element_sliders[material])
+    if material != 'air':
+        element_sliders[material] = Slider(title=f"U value for {material}", start=0, end=3, step=0.05, value=data['element_type'][material]['uvalue'], bar_color=element_colours[i])
+        sliders.append(element_sliders[material])
 air_change_sliders = {}
 for i, room in enumerate(room_keys):
     air_change_sliders[room] = Slider(title=f'Air changes/h {room}', start=0, end=5, step=0.05, value=data['rooms'][room]['air_change_an_hour'], bar_color=room_colours[i])
