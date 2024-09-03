@@ -11,7 +11,7 @@ from bokeh.plotting import figure, show, output_file
 from bokeh.models import Slider, Switch, Div, CrosshairTool, Span, HoverTool, ColumnDataSource, Range1d, LinearAxis,  DateRangeSlider, RadioGroup, Button
 from bokeh.io import curdoc
 from structures import HouseData, TemperaturePoint
-from bokeh.palettes import Category20, magma, plasma
+from bokeh.palettes import Category20, magma, plasma, viridis
 from bokeh.transform import linear_cmap
 from math import ceil
 import scipy.integrate
@@ -174,8 +174,12 @@ def calculate_data(focus_room: str='', verbose: bool = False, samples: int =1000
 
         # work out heat loss for each room
         room_flows_watts = {}
+        elem_totals = {}
         for _, room_name, room_data in room_records:                    
             room_flows_watts[room_name], flow_by_type = work_out_room_flow(temperatures, room_name, room_data)
+            for k, v in flow_by_type.items():
+                elem_totals.setdefault(k, 0)
+                elem_totals[k] += max(-v, 0)
             if room_name == focus_room:
                 for elemt, watts in flow_by_type.items():
                     k = f'room_flow_{elemt}'
@@ -184,6 +188,9 @@ def calculate_data(focus_room: str='', verbose: bool = False, samples: int =1000
                     recs.setdefault(gk, []).append(max(0, -watts))
             # room flows are normally negative, so we invert the series for the chart so it is readable
             recs.setdefault(f'{room_name}_loss', []).append(-room_flows_watts[room_name])
+        for k,v  in elem_totals.items():
+            k2 = f'{k}_element_loss'
+            recs.setdefault(k2, []).append(v)
         recs.setdefault('loss_for_room', []).append(-room_flows_watts[focus_room])
         # work out radiator output if the heat source is infinite
         recs.setdefault('available_radiator_power', []).append(calculate_available_radiator_watts(temperatures, radiator_scales, flow_t, focus_room, data['rooms'][focus_room]))
@@ -421,8 +428,8 @@ t1 = datetime.now()
 t0p = isoparse("2024-02-01T00:00:00Z")
 t1p = isoparse("2024-02-01T23:59:00Z")
 elements = ['air']+sorted(data['element_type'].keys())
-element_colours = plasma(len(elements))
-room_colours = plasma(len(data['rooms']))
+element_colours = viridis(len(elements))
+room_colours = magma(len(data['rooms']))
 
 day_range_slider = DateRangeSlider(width=800, start=t0, end=t1, value=(t0p,t1p))
 minimum_rad_density_slider = Slider(title='Minimum rad density', start=30, end=1000, value=5)
@@ -470,7 +477,7 @@ energy_text = work_out_energy_use(df)
 axs = []
 
 TOOLTIPS = [("(x,y)", "(@time_str, $y)")]
-for i in range(8):
+for i in range(9):
     s = figure(height=400, width=800, x_axis_type='datetime', tools='hover,xwheel_zoom', tooltips=TOOLTIPS)
     s.add_tools(CrosshairTool(overlay=[width, height]))
     axs.append(s)
@@ -481,7 +488,7 @@ axs[0].scatter(x='time', y='meters', source=main_ds, color='black')
 
 #axs[0].legend.location = 'bottom_right'
 axs[0].legend.background_fill_alpha = 0.5
-axs[0].title = 'Heat input, watts'
+axs[0].title = 'Heat input per room'
 
 colours = {'external':'blue'}
 room = room_keys[room_select.active]
@@ -505,21 +512,20 @@ axs[1].yaxis.axis_label = 'Celsius'
 axs[1].title = f'{room} temperature'
 axs[1].legend.click_policy = 'mute'
 
-axs[2].title = 'Outside temperature'
-axs[2].yaxis.axis_label = 'Celsius'
-axs[2].line(x='time', y='external_temperature', source=main_ds)
+axs[2].title = 'Heat loss by material'
+axs[2].yaxis.axis_label = 'Power'
+axs[2].varea_stack(x= 'time', stackers=[x+'_element_loss' for x in elements],  source=main_ds, color=element_colours)
 
-axs[5].yaxis.axis_label = 'Power'
-axs[5].title = 'Room heat loss'
-axs[5].line(x='time', y='loss_for_room', source=main_ds)
-
-axs[5].varea_stack(x='time', stackers=[f'room_flow_{k}' for k in elements], source=main_ds, color=element_colours)
 axs[4].yaxis.axis_label = 'Power'
 axs[4].title = 'Room heat gain'
 axs[4].line(x='time', y='gain_for_room_unbounded', source=main_ds, line_color='yellow')
 axs[4].line(x='time', y='gain_for_room', source=main_ds)
 axs[4].line(x='time', y='available_radiator_power', source=main_ds, line_color='grey', alpha=0.4)
 
+axs[5].yaxis.axis_label = 'Power'
+axs[5].title = 'Room heat loss'
+axs[5].line(x='time', y='loss_for_room', source=main_ds)
+axs[5].varea_stack(x='time', stackers=[f'room_flow_{k}' for k in elements], source=main_ds, color=element_colours)
 
 axs[6].title = 'Flow temperature'
 axs[6].yaxis.axis_label = 'Celsius'
@@ -528,6 +534,12 @@ axs[6].line(x='time', y='flow_temperature', source=main_ds)
 axs[7].title = 'Satisfaction'
 axs[7].yaxis.axis_label = 'Ratio'
 axs[7].line(x='time', y='satisfactions', source=main_ds)
+
+axs[8].title = 'Outside temperature'
+axs[8].yaxis.axis_label = 'Celsius'
+axs[8].line(x='time', y='external_temperature', source=main_ds)
+
+
 def change_room(attr, old, new):
     do_callback()
 
