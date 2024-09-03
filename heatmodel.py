@@ -148,7 +148,8 @@ def calculate_data(focus_room: str='', verbose: bool = False, samples: int =1000
     while t < end_t:
         while cursor+ 1< len(house_data.outside_temperatures) and house_data.outside_temperatures[cursor+1].time < t:
             cursor += 1
-        rec = house_data.outside_temperatures[cursor]
+        rec = house_data.outside_temperatures[cursor] 
+        assert rec.time >= t - timedelta(days=1) and rec.time <= t + timedelta(days=1), (t, rec.time)
         recs.setdefault('meters', []).append(house_data.gas_readings.get(t, 0.0))
         temperatures['external'] = rec.temperature
         temperatures['carport'] = max(10, rec.temperature)
@@ -188,6 +189,9 @@ def calculate_data(focus_room: str='', verbose: bool = False, samples: int =1000
                     recs.setdefault(gk, []).append(max(0, -watts))
             # room flows are normally negative, so we invert the series for the chart so it is readable
             recs.setdefault(f'{room_name}_loss', []).append(-room_flows_watts[room_name])
+        if verbose:
+            print(f'{t} outside {temperatures['external']} total flow {sum(elem_totals.values())}')
+            pprint.pprint(elem_totals)
         for k,v  in elem_totals.items():
             k2 = f'{k}_element_loss'
             recs.setdefault(k2, []).append(v)
@@ -306,10 +310,11 @@ def calculate_available_radiator_watts(temperatures, radiator_scales, flow_t, ro
         available_rad_watts += rad_watts
     return available_rad_watts
 
-def work_out_room_flow(temperatures, room_name, room_data):
+def work_out_room_flow(temperatures, room_name, room_data, verbose:bool=False):
     temperatures.setdefault(room_name, 20)
     delta_t = temperatures['external'] - temperatures[room_name]
-
+    if verbose:
+        print(f'delta {delta_t} for air in {room_name} at {temperatures[room_name]} outside {temperatures['external']}')
     infiltration_watts = air_change_sliders[room_name].value * air_factor_slider.value * room_data['volume'] * delta_t
     if False:
         print(f'{room_name} infiltration={infiltration_watts} from delta T {delta_t}')
@@ -335,6 +340,8 @@ def work_out_room_flow(temperatures, room_name, room_data):
         room_tot_flow_watts += flow_watts
         room_flow_by_type.setdefault(elem_type, 0)
         room_flow_by_type[elem_type] += flow_watts
+        if verbose:
+            print(f'outer {other_temperature} inner {room_temperature} delta { delta_t} flow { flow_watts} {elem_type} {room_name}')
 
     return room_tot_flow_watts, room_flow_by_type
 
@@ -425,8 +432,8 @@ air_factor_slider = Slider(title='Air infiltation factor', start=0, end=10, valu
 flow_temperature_slider = Slider(title='Flow temperature (C)', start=25, end=65, value=45)
 t0 = isoparse("2023-08-01T00:00:00Z")
 t1 = datetime.now()
-t0p = isoparse("2024-02-01T00:00:00Z")
-t1p = isoparse("2024-02-01T23:59:00Z")
+t0p = isoparse("2024-07-01T00:00:00Z")
+t1p = isoparse("2024-07-01T23:59:00Z")
 elements = ['air']+sorted(data['element_type'].keys())
 element_colours = viridis(len(elements))
 room_colours = plasma(len(data['rooms']))
