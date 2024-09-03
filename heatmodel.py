@@ -429,7 +429,7 @@ t0p = isoparse("2024-02-01T00:00:00Z")
 t1p = isoparse("2024-02-01T23:59:00Z")
 elements = ['air']+sorted(data['element_type'].keys())
 element_colours = viridis(len(elements))
-room_colours = magma(len(data['rooms']))
+room_colours = plasma(len(data['rooms']))
 
 day_range_slider = DateRangeSlider(width=800, start=t0, end=t1, value=(t0p,t1p))
 minimum_rad_density_slider = Slider(title='Minimum rad density', start=30, end=1000, value=5)
