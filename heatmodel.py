@@ -1,6 +1,6 @@
 import json, pprint, pickle, os
 from dateutil.parser import isoparse
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from typing import NamedTuple
 import influxdb_client, time
 from influxdb_client.client.write_api import SYNCHRONOUS
@@ -61,6 +61,7 @@ def fetch_house_data() -> HouseData:
     query_api = client.query_api()
 
     start = isoparse("2023-08-01T00:00:00Z")
+    end = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
     temps = []
     for col in query_api.query(f"""
 from(bucket: "home-assistant")
@@ -96,14 +97,28 @@ from(bucket: "56new")
     gas_readings = {}
     for col in query_api.query(f"""
         from(bucket: "56new")
-        |> range(start:{start.strftime('%Y-%m-%dT%H:%M:%SZ')}, stop: {(start+timedelta(days=365)).strftime('%Y-%m-%dT%H:%M:%SZ')})
+        |> range(start:{start.strftime('%Y-%m-%dT%H:%M:%SZ')}, stop: {(end).strftime('%Y-%m-%dT%H:%M:%SZ')})
         |> filter(fn: (r) => r["_measurement"] == "usage")
         |> filter(fn: (r) => r["_field"] == "usage")
         |> filter(fn: (r) => r["device_name"] == "utility meter")
         |> filter(fn: (r) => r["energy"] == "gas" )
                                """):
         for row in col:
-            gas_readings[(row["_time"]+timedelta(minutes=5))] = row["_value"]
+            t = row['_time']
+            tround = t.replace(minute=30 if t.minute >= 30 else 0, second=0, microsecond=0)
+            gas_readings[tround] = row["_value"]
+    # fill in all gaps based on the next reading value we have
+    t = end
+    last_seen = None
+    pprint.pprint(gas_readings)
+    while t >= start:
+        t -= timedelta(minutes=interval_minutes)
+        r = gas_readings.get(t)
+        if r is not None:
+            last_seen = r
+        elif last_seen:
+            gas_readings[t] = last_seen
+    pprint.pprint(gas_readings)
     flow_temperatures = {}
     for col in query_api.query(f"""
         from(bucket: "56new")
@@ -150,7 +165,7 @@ def calculate_data(focus_room: str='', verbose: bool = False, samples: int =1000
             cursor += 1
         rec = house_data.outside_temperatures[cursor] 
         assert rec.time >= t - timedelta(days=1) and rec.time <= t + timedelta(days=1), (t, rec.time)
-        recs.setdefault('meters', []).append(house_data.gas_readings.get(t, 0.0))
+        recs.setdefault('meters', []).append(house_data.gas_readings.get(t, None))
         temperatures['external'] = rec.temperature
         temperatures['carport'] = max(10, rec.temperature)
         recs.setdefault('time', []).append(t)
@@ -420,7 +435,7 @@ def work_out_energy_use(df):
     # heat_gain_ds.data =dict(x=df['time'], y=heat_gain_df[room])
     kwh_output =  scipy.integrate.trapezoid(subset.sum(axis=1), index_seconds) / 3.6e6
     kwh_input =  scipy.integrate.trapezoid(df['input_power'], index_seconds) / 3.6e6
-    metered = sum(df['meters'])/1000
+    metered = sum([m for m in df['meters'] if m is not None])/1000
     return f'50th percentile power={subsetsum.quantile(0.5)/1e3:.1f}kW 90th percentile power={subsetsum.quantile(0.9)/1e3:.1f}kW 100th percentile power (max)={subsetsum.quantile(1.0)/1e3:.1f}kW total energy kwh output {kwh_output:.1f} metered {metered:.1f} input {kwh_input:.1f} efficency {100.0*kwh_output/ metered:.0f}%'
 
 room_keys = sorted(data['rooms'].keys())
@@ -432,8 +447,8 @@ air_factor_slider = Slider(title='Air infiltation factor', start=0, end=10, valu
 flow_temperature_slider = Slider(title='Flow temperature (C)', start=25, end=65, value=45)
 t0 = isoparse("2023-08-01T00:00:00Z")
 t1 = datetime.now()
-t0p = isoparse("2024-07-01T00:00:00Z")
-t1p = isoparse("2024-07-01T23:59:00Z")
+t0p = isoparse("2024-02-01T00:00:00Z")
+t1p = isoparse("2024-02-01T23:59:00Z")
 elements = ['air']+sorted(data['element_type'].keys())
 element_colours = viridis(len(elements))
 room_colours = plasma(len(data['rooms']))
@@ -491,7 +506,7 @@ for i in range(9):
 
 main_ds = ColumnDataSource(df)
 axs[0].varea_stack(x= 'time', stackers=[x+'_gain' for x in room_keys],  source=main_ds, color=room_colours)
-axs[0].scatter(x='time', y='meters', source=main_ds, color='black')
+axs[0].step(x='time', y='meters', source=main_ds, color='black')
 
 #axs[0].legend.location = 'bottom_right'
 axs[0].legend.background_fill_alpha = 0.5
