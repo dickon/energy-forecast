@@ -105,6 +105,7 @@ from(bucket: "56new")
                                """):
         for row in col:
             t = row['_time']
+            t += timedelta(minutes=15)
             tround = t.replace(minute=30 if t.minute >= 30 else 0, second=0, microsecond=0)
             gas_readings[tround] = row["_value"]
     # fill in all gaps based on the next reading value we have
@@ -457,7 +458,7 @@ day_range_slider = DateRangeSlider(width=800, start=t0, end=t1, value=(t0p,t1p))
 minimum_rad_density_slider = Slider(title='Minimum rad density', start=30, end=1000, value=5)
 weather_compensation_threshold_slider = Slider(title='Weather compensation threshold temperature', start=0, end=30, value=15, step=0.1)
 weather_compensation_ratio_slider = Slider(title='Weather compensation ratio', start=0.1, end=1.5, value=0.6, step=0.05)
-radiator_response_time_slider = Slider(title='Radiator response time', start=0, end=60, value=interval_minutes*2, step=interval_minutes)
+radiator_response_time_slider = Slider(title='Radiator response time', start=0, end=60, value=0, step=interval_minutes)
 flow_temperature_reading_offset_slider = Slider(title='Correction factor for flow temperature readings', start=-20, end=50, value=5)
 temperature_change_factor_slider = Slider(title='Temperatue change ratio', start=1, end=1000, value=10)
 setpoint_slider = Slider(title='Temperature setpoint', start=15, end=25, value=19, step=0.1)
@@ -500,7 +501,7 @@ axs = []
 
 TOOLTIPS = [("(x,y)", "(@time_str, $y)")]
 for i in range(9):
-    s = figure(height=400, width=800, x_axis_type='datetime', tools='hover,xwheel_zoom', tooltips=TOOLTIPS)
+    s = figure(height=400, width=500, x_axis_type='datetime', tools='hover,xwheel_zoom', tooltips=TOOLTIPS)
     s.add_tools(CrosshairTool(overlay=[width, height]))
     axs.append(s)
 
@@ -601,7 +602,7 @@ layout = column([row([room_select])]+row_split(sliders, 4)+
     ]),
     row([energy_use]),
     row([Div(text='Weather compensation'), weather_compensation_switch])]+     
-    row_split(axs, 2)
+    row_split(axs, 3)
 )
 curdoc().add_root(layout)
     
