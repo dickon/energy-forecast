@@ -529,6 +529,7 @@ colours = {'external':'blue'}
 colors = linear_cmap(field_name='temperature', palette='Viridis256', low=-5, high=30)
 room = room_keys[room_select.active]
 col = room_colours[room_select.active]
+axs[ROOM_TEMPERATURE].title = f'{room} temperature'
 axs[ROOM_TEMPERATURE].line(x='time', y='temperature',  source= main_ds,  line_width=2, color='blue')
 axs[ROOM_TEMPERATURE].line(x='time', y='simulated_temperature',  source= main_ds,  line_width=2, color='lightgreen')
 axs[ROOM_TEMPERATURE].line(x='time', y='setpoint',  source=main_ds,  line_width=2, color='red')
@@ -538,7 +539,6 @@ axs[POWER_DISCREPANCIES].scatter(x='time', y='power_discrepancy',  color=colors,
 axs[POWER_DISCREPANCIES].legend.location = 'bottom_right'
 axs[POWER_DISCREPANCIES].legend.background_fill_alpha = 0.5
 axs[POWER_DISCREPANCIES].yaxis.axis_label = 'Celsius'
-axs[POWER_DISCREPANCIES].title = f'{room} temperature'
 axs[POWER_DISCREPANCIES].legend.click_policy = 'mute'
 axs[HEAT_LOSS_BY_MATERIAL_WHOLE_HOUSE].title = 'Heat loss by material type, whole house'
 axs[HEAT_LOSS_BY_MATERIAL_WHOLE_HOUSE].yaxis.axis_label = 'Power'
