@@ -420,15 +420,18 @@ def calculate_gas_efficiency(return_t):
 def update_data(attr, old, new):
     do_callback()
 
+
+def set_room_name_in_titles(room):
+    axs[ROOM_TEMPERATURE].title.text = f'{room} temperature'
+    axs[POWER_DISCREPANCIES].title.text = f'{room} power discrepancies'
+    axs[HEAT_LOSS_BY_MATERIAL_ROOM].title = f'{room} heat loss for element type'
+
 def do_update():
     room = room_keys[room_select.active]
     df = calculate_data(room)
     main_ds.data = df
     energy_use.text = work_out_energy_use(df)
-    axs[ROOM_TEMPERATURE].title.text = f'{room} temperature'
-    axs[POWER_DISCREPANCIES].title.text = f'{room} power discrepanices'
-    axs[HEAT_LOSS_BY_MATERIAL_ROOM].title = f'{room} heat loss for element type'
-
+    set_room_name_in_titles(room)
 
 def work_out_energy_use(df):
     subset = df.filter(regex=r'.*_gain')
@@ -531,12 +534,10 @@ colours = {'external':'blue'}
 colors = linear_cmap(field_name='temperature', palette='Viridis256', low=-5, high=30)
 focus_room = room_keys[room_select.active]
 col = room_colours[room_select.active]
-axs[ROOM_TEMPERATURE].title = f'{focus_room} temperature'
 axs[ROOM_TEMPERATURE].line(x='time', y='temperature',  source= main_ds,  line_width=2, color='blue')
 axs[ROOM_TEMPERATURE].line(x='time', y='simulated_temperature',  source= main_ds,  line_width=2, color='lightgreen')
 axs[ROOM_TEMPERATURE].line(x='time', y='setpoint',  source=main_ds,  line_width=2, color='red')
 axs[ROOM_TEMPERATURE].line(x='time', y='setpoint_lagged',  source=main_ds,  line_width=2, color='pink')
-axs[POWER_DISCREPANCIES].title = f'{focus_room} power discrepanices'
 axs[POWER_DISCREPANCIES].scatter(x='time', y='power_discrepancy',  color=colors, source=main_ds)
 axs[POWER_DISCREPANCIES].legend.location = 'bottom_right'
 axs[POWER_DISCREPANCIES].legend.background_fill_alpha = 0.5
@@ -551,7 +552,6 @@ axs[ROOM_HEAT_GAIN].line(x='time', y='gain_for_room_unbounded', source=main_ds, 
 axs[ROOM_HEAT_GAIN].line(x='time', y='gain_for_room', source=main_ds)
 axs[ROOM_HEAT_GAIN].line(x='time', y='available_radiator_power', source=main_ds, line_color='grey', alpha=0.4)
 axs[HEAT_LOSS_BY_MATERIAL_ROOM].yaxis.axis_label = 'Power'
-axs[HEAT_LOSS_BY_MATERIAL_ROOM].title = f'{focus_room} heat loss for element type'
 axs[HEAT_LOSS_BY_MATERIAL_ROOM].varea_stack(x='time', stackers=[f'room_flow_{k}' for k in elements], source=main_ds, color=element_colours)
 axs[HEAT_LOSS_BY_MATERIAL_ROOM].line(x='time', y='loss_for_room', source=main_ds, color='black', line_width=2)
 axs[FLOW_TEMPERATURE].title = 'Flow temperature'
@@ -563,7 +563,7 @@ axs[SATISFACTION].line(x='time', y='satisfactions', source=main_ds)
 axs[OUTSIDE_TEMPERATURE].title = 'Outside temperature'
 axs[OUTSIDE_TEMPERATURE].yaxis.axis_label = 'Celsius'
 axs[OUTSIDE_TEMPERATURE].line(x='time', y='external_temperature', source=main_ds)
-
+set_room_name_in_titles(focus_room)
 
 def change_room(attr, old, new):
     do_callback()
