@@ -509,61 +509,58 @@ for i in range(9):
 main_ds = ColumnDataSource(df)
 HEAT_ROOM_AND_METERS = 0
 ROOM_TEMPERATURE =1 
+POWER_DISCREPANCIES = 3
+HEAT_LOSS_BY_MATERIAL_WHOLE_HOUSE = 2
+ROOM_HEAT_GAIN = 4
+ROOM_HEAT_LOSS_BY_MATERIAL = 5
+FLOW_TEMPERATURE = 6
+SATISFACTION = 7
+OUTSIDE_TEMPERATURE = 8
 axs[HEAT_ROOM_AND_METERS].varea_stack(x= 'time', stackers=[x+'_gain' for x in room_keys],  source=main_ds, color=room_colours)
 axs[HEAT_ROOM_AND_METERS].varea(x='time', y1=0, y2='meters', source=main_ds, color='black', alpha=0.5)
 axs[HEAT_ROOM_AND_METERS].step(x='time',y='meters', source=main_ds, color='blue')
+axs[HEAT_ROOM_AND_METERS].yaxis.axis_label = "Watts"
 
 #axs[HEAT_ROOM_AND_METERS].legend.location = 'bottom_right'
 axs[HEAT_ROOM_AND_METERS].legend.background_fill_alpha = 0.5
 axs[HEAT_ROOM_AND_METERS].title = 'Heat input per room'
 
 colours = {'external':'blue'}
+colors = linear_cmap(field_name='temperature', palette='Viridis256', low=-5, high=30)
 room = room_keys[room_select.active]
 col = room_colours[room_select.active]
 axs[ROOM_TEMPERATURE].line(x='time', y='temperature',  source= main_ds,  line_width=2, color='blue')
 axs[ROOM_TEMPERATURE].line(x='time', y='simulated_temperature',  source= main_ds,  line_width=2, color='lightgreen')
 axs[ROOM_TEMPERATURE].line(x='time', y='setpoint',  source=main_ds,  line_width=2, color='red')
 axs[ROOM_TEMPERATURE].line(x='time', y='setpoint_lagged',  source=main_ds,  line_width=2, color='pink')
-axs[3].title = f'{room} power discrepanices'
-#axs[i+3].y_range = Range1d(10, 25)
-#axs[i+3].extra_y_ranges = {"power":Range1d(start=-2000, end=2000)}
-#axs[i+3].line(x=df['time'], y=df[room], color='black')
-colors = linear_cmap(field_name='temperature', palette='Viridis256', low=-5, high=30)
-axs[3].scatter(x='time', y='power_discrepancy',  color=colors, source=main_ds)
-#axs[i+3].add_layout(LinearAxis(y_range_name='power'), 'right')
-axs[0].yaxis.axis_label = "Watts"
-axs[1].legend.location = 'bottom_right'
-axs[1].legend.background_fill_alpha = 0.5
-axs[1].yaxis.axis_label = 'Celsius'
-axs[1].title = f'{room} temperature'
-axs[1].legend.click_policy = 'mute'
-
-axs[2].title = 'Heat loss by material type, whole house'
-axs[2].yaxis.axis_label = 'Power'
-axs[2].varea_stack(x= 'time', stackers=[x+'_element_loss' for x in elements],  source=main_ds, color=element_colours)
-
-axs[4].yaxis.axis_label = 'Power'
-axs[4].title = 'Room heat gain'
-axs[4].line(x='time', y='gain_for_room_unbounded', source=main_ds, line_color='yellow')
-axs[4].line(x='time', y='gain_for_room', source=main_ds)
-axs[4].line(x='time', y='available_radiator_power', source=main_ds, line_color='grey', alpha=0.4)
-
-axs[5].yaxis.axis_label = 'Power'
-axs[5].title = f'{room} heat loss for element type'
-axs[5].varea_stack(x='time', stackers=[f'room_flow_{k}' for k in elements], source=main_ds, color=element_colours)
-axs[5].line(x='time', y='loss_for_room', source=main_ds)
-
-axs[6].title = 'Flow temperature'
-axs[6].yaxis.axis_label = 'Celsius'
-axs[6].line(x='time', y='flow_temperature', source=main_ds)
-
-axs[7].title = 'Satisfaction'
-axs[7].yaxis.axis_label = 'Ratio'
-axs[7].line(x='time', y='satisfactions', source=main_ds)
-
-axs[8].title = 'Outside temperature'
-axs[8].yaxis.axis_label = 'Celsius'
-axs[8].line(x='time', y='external_temperature', source=main_ds)
+axs[POWER_DISCREPANCIES].title = f'{room} power discrepanices'
+axs[POWER_DISCREPANCIES].scatter(x='time', y='power_discrepancy',  color=colors, source=main_ds)
+axs[POWER_DISCREPANCIES].legend.location = 'bottom_right'
+axs[POWER_DISCREPANCIES].legend.background_fill_alpha = 0.5
+axs[POWER_DISCREPANCIES].yaxis.axis_label = 'Celsius'
+axs[POWER_DISCREPANCIES].title = f'{room} temperature'
+axs[POWER_DISCREPANCIES].legend.click_policy = 'mute'
+axs[HEAT_LOSS_BY_MATERIAL_WHOLE_HOUSE].title = 'Heat loss by material type, whole house'
+axs[HEAT_LOSS_BY_MATERIAL_WHOLE_HOUSE].yaxis.axis_label = 'Power'
+axs[HEAT_LOSS_BY_MATERIAL_WHOLE_HOUSE].varea_stack(x= 'time', stackers=[x+'_element_loss' for x in elements],  source=main_ds, color=element_colours)
+axs[ROOM_HEAT_GAIN].yaxis.axis_label = 'Power'
+axs[ROOM_HEAT_GAIN].title = 'Room heat gain'
+axs[ROOM_HEAT_GAIN].line(x='time', y='gain_for_room_unbounded', source=main_ds, line_color='yellow')
+axs[ROOM_HEAT_GAIN].line(x='time', y='gain_for_room', source=main_ds)
+axs[ROOM_HEAT_GAIN].line(x='time', y='available_radiator_power', source=main_ds, line_color='grey', alpha=0.4)
+axs[ROOM_HEAT_LOSS_BY_MATERIAL].yaxis.axis_label = 'Power'
+axs[ROOM_HEAT_LOSS_BY_MATERIAL].title = f'{room} heat loss for element type'
+axs[ROOM_HEAT_LOSS_BY_MATERIAL].varea_stack(x='time', stackers=[f'room_flow_{k}' for k in elements], source=main_ds, color=element_colours)
+axs[ROOM_HEAT_LOSS_BY_MATERIAL].line(x='time', y='loss_for_room', source=main_ds)
+axs[FLOW_TEMPERATURE].title = 'Flow temperature'
+axs[FLOW_TEMPERATURE].yaxis.axis_label = 'Celsius'
+axs[FLOW_TEMPERATURE].line(x='time', y='flow_temperature', source=main_ds)
+axs[SATISFACTION].title = 'Satisfaction'
+axs[SATISFACTION].yaxis.axis_label = 'Ratio'
+axs[SATISFACTION].line(x='time', y='satisfactions', source=main_ds)
+axs[OUTSIDE_TEMPERATURE].title = 'Outside temperature'
+axs[OUTSIDE_TEMPERATURE].yaxis.axis_label = 'Celsius'
+axs[OUTSIDE_TEMPERATURE].line(x='time', y='external_temperature', source=main_ds)
 
 
 def change_room(attr, old, new):
