@@ -508,11 +508,11 @@ for i in range(9):
 
 main_ds = ColumnDataSource(df)
 HEAT_ROOM_AND_METERS = 0
-ROOM_TEMPERATURE =1 
+ROOM_TEMPERATURE = 2
 POWER_DISCREPANCIES = 3
-HEAT_LOSS_BY_MATERIAL_WHOLE_HOUSE = 2
+HEAT_LOSS_BY_MATERIAL_WHOLE_HOUSE = 1
 ROOM_HEAT_GAIN = 4
-ROOM_HEAT_LOSS_BY_MATERIAL = 5
+HEAT_LOSS_BY_MATERIAL_ROOM = 5
 FLOW_TEMPERATURE = 6
 SATISFACTION = 7
 OUTSIDE_TEMPERATURE = 8
@@ -548,10 +548,10 @@ axs[ROOM_HEAT_GAIN].title = 'Room heat gain'
 axs[ROOM_HEAT_GAIN].line(x='time', y='gain_for_room_unbounded', source=main_ds, line_color='yellow')
 axs[ROOM_HEAT_GAIN].line(x='time', y='gain_for_room', source=main_ds)
 axs[ROOM_HEAT_GAIN].line(x='time', y='available_radiator_power', source=main_ds, line_color='grey', alpha=0.4)
-axs[ROOM_HEAT_LOSS_BY_MATERIAL].yaxis.axis_label = 'Power'
-axs[ROOM_HEAT_LOSS_BY_MATERIAL].title = f'{room} heat loss for element type'
-axs[ROOM_HEAT_LOSS_BY_MATERIAL].varea_stack(x='time', stackers=[f'room_flow_{k}' for k in elements], source=main_ds, color=element_colours)
-axs[ROOM_HEAT_LOSS_BY_MATERIAL].line(x='time', y='loss_for_room', source=main_ds)
+axs[HEAT_LOSS_BY_MATERIAL_ROOM].yaxis.axis_label = 'Power'
+axs[HEAT_LOSS_BY_MATERIAL_ROOM].title = f'{room} heat loss for element type'
+axs[HEAT_LOSS_BY_MATERIAL_ROOM].varea_stack(x='time', stackers=[f'room_flow_{k}' for k in elements], source=main_ds, color=element_colours)
+axs[HEAT_LOSS_BY_MATERIAL_ROOM].line(x='time', y='loss_for_room', source=main_ds, color='black', line_width=2)
 axs[FLOW_TEMPERATURE].title = 'Flow temperature'
 axs[FLOW_TEMPERATURE].yaxis.axis_label = 'Celsius'
 axs[FLOW_TEMPERATURE].line(x='time', y='flow_temperature', source=main_ds)
