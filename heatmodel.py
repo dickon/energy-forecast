@@ -65,7 +65,7 @@ def fetch_house_data() -> HouseData:
     temps = []
     for col in query_api.query(f"""
 from(bucket: "home-assistant")
-  |> range(start:{start.strftime('%Y-%m-%dT%H:%M:%SZ')}, stop: {(start+timedelta(days=365)).strftime('%Y-%m-%dT%H:%M:%SZ')})
+  |> range(start:{start.strftime('%Y-%m-%dT%H:%M:%SZ')}, stop: {end.strftime('%Y-%m-%dT%H:%M:%SZ')})
   |> filter(fn: (r) => r["_measurement"] == "sensor.openweathermap_condition" or r["_measurement"] == "weather.56_new_road")
   |> filter(fn: (r) => r["_field"] == "temperature_valid" or r["_field"] == "temperature")
   |> filter(fn: (r) => r["domain"] == "weather")
@@ -111,7 +111,6 @@ from(bucket: "56new")
     # fill in all gaps based on the next reading value we have
     t = end
     last_seen = None
-    pprint.pprint(gas_readings)
     while t >= start:
         t -= timedelta(minutes=interval_minutes)
         r = gas_readings.get(t)
@@ -427,6 +426,8 @@ def do_update():
     energy_use.text = work_out_energy_use(df)
     axs[1].title.text = f'{room} temperature'
     axs[3].title.text = f'{room} power discrepanices'
+    axs[5].title = f'{room} heat loss for element type'
+
 
 def work_out_energy_use(df):
     subset = df.filter(regex=r'.*_gain')
@@ -501,26 +502,28 @@ axs = []
 
 TOOLTIPS = [("(x,y)", "(@time_str, $y)")]
 for i in range(9):
-    s = figure(height=400, width=500, x_axis_type='datetime', tools='hover,xwheel_zoom', tooltips=TOOLTIPS)
+    s = figure(height=400, width=625, x_axis_type='datetime', tools='hover,xwheel_zoom', tooltips=TOOLTIPS)
     s.add_tools(CrosshairTool(overlay=[width, height]))
     axs.append(s)
 
 main_ds = ColumnDataSource(df)
-axs[0].varea_stack(x= 'time', stackers=[x+'_gain' for x in room_keys],  source=main_ds, color=room_colours)
-axs[0].step(x='time', y='meters', source=main_ds, color='black')
+HEAT_ROOM_AND_METERS = 0
+ROOM_TEMPERATURE =1 
+axs[HEAT_ROOM_AND_METERS].varea_stack(x= 'time', stackers=[x+'_gain' for x in room_keys],  source=main_ds, color=room_colours)
+axs[HEAT_ROOM_AND_METERS].varea(x='time', y1=0, y2='meters', source=main_ds, color='black', alpha=0.5)
+axs[HEAT_ROOM_AND_METERS].step(x='time',y='meters', source=main_ds, color='blue')
 
-#axs[0].legend.location = 'bottom_right'
-axs[0].legend.background_fill_alpha = 0.5
-axs[0].title = 'Heat input per room'
+#axs[HEAT_ROOM_AND_METERS].legend.location = 'bottom_right'
+axs[HEAT_ROOM_AND_METERS].legend.background_fill_alpha = 0.5
+axs[HEAT_ROOM_AND_METERS].title = 'Heat input per room'
 
 colours = {'external':'blue'}
 room = room_keys[room_select.active]
 col = room_colours[room_select.active]
-axs[1].line(x='time', y='temperature',  source= main_ds,  line_width=2, color='blue')
-axs[1].line(x='time', y='simulated_temperature',  source= main_ds,  line_width=2, color='lightgreen')
-
-axs[1].line(x='time', y='setpoint',  source=main_ds,  line_width=2, color='red')
-axs[1].line(x='time', y='setpoint_lagged',  source=main_ds,  line_width=2, color='pink')
+axs[ROOM_TEMPERATURE].line(x='time', y='temperature',  source= main_ds,  line_width=2, color='blue')
+axs[ROOM_TEMPERATURE].line(x='time', y='simulated_temperature',  source= main_ds,  line_width=2, color='lightgreen')
+axs[ROOM_TEMPERATURE].line(x='time', y='setpoint',  source=main_ds,  line_width=2, color='red')
+axs[ROOM_TEMPERATURE].line(x='time', y='setpoint_lagged',  source=main_ds,  line_width=2, color='pink')
 axs[3].title = f'{room} power discrepanices'
 #axs[i+3].y_range = Range1d(10, 25)
 #axs[i+3].extra_y_ranges = {"power":Range1d(start=-2000, end=2000)}
@@ -535,7 +538,7 @@ axs[1].yaxis.axis_label = 'Celsius'
 axs[1].title = f'{room} temperature'
 axs[1].legend.click_policy = 'mute'
 
-axs[2].title = 'Heat loss by material'
+axs[2].title = 'Heat loss by material type, whole house'
 axs[2].yaxis.axis_label = 'Power'
 axs[2].varea_stack(x= 'time', stackers=[x+'_element_loss' for x in elements],  source=main_ds, color=element_colours)
 
@@ -546,9 +549,9 @@ axs[4].line(x='time', y='gain_for_room', source=main_ds)
 axs[4].line(x='time', y='available_radiator_power', source=main_ds, line_color='grey', alpha=0.4)
 
 axs[5].yaxis.axis_label = 'Power'
-axs[5].title = 'Room heat loss'
-axs[5].line(x='time', y='loss_for_room', source=main_ds)
+axs[5].title = f'{room} heat loss for element type'
 axs[5].varea_stack(x='time', stackers=[f'room_flow_{k}' for k in elements], source=main_ds, color=element_colours)
+axs[5].line(x='time', y='loss_for_room', source=main_ds)
 
 axs[6].title = 'Flow temperature'
 axs[6].yaxis.axis_label = 'Celsius'
@@ -593,7 +596,7 @@ heat_pump_mode_button = Button(label='Switch to heat pump settings')
 heat_pump_mode_button.on_click(heat_pump_mode_callback)
 full_year_button = Button(label='Switch to full year')
 full_year_button.on_click(go_full_year)
-layout = column([row([room_select])]+row_split(sliders, 4)+
+layout = column([row([room_select])]+row_split(sliders, 6)+
     [row([
         Div(text='Use historical setpoints'), real_setpoints_switch,
         boiler_button,
