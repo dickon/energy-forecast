@@ -151,6 +151,7 @@ with open('heatmodel.json', 'r') as f:
     data = json.load(f)
 
 def calculate_data(focus_room: str='', verbose: bool = False, samples: int =1000, real_temperatures:bool =True) -> pd.DataFrame:
+    print(f'focus room={focus_room}')
     temperatures = {}
     start_t = t = pytz.utc.localize(datetime.fromtimestamp(day_range_slider.value[0]/1000))
     end_t = pytz.utc.localize(datetime.fromtimestamp(day_range_slider.value[-1]/1000))
@@ -284,7 +285,7 @@ def calculate_data(focus_room: str='', verbose: bool = False, samples: int =1000
     else:
         rdf = df
     if real_temperatures:
-        rdf_sim = calculate_data(room, real_temperatures=False)
+        rdf_sim = calculate_data(focus_room, real_temperatures=False)
         rdf['simulated_temperature'] = rdf_sim['temperature']
     rdf['time_str'] = rdf['time'].apply(lambda v: v.strftime('%a %d %b %y %H:%M'))
     return rdf
@@ -424,9 +425,9 @@ def do_update():
     df = calculate_data(room)
     main_ds.data = df
     energy_use.text = work_out_energy_use(df)
-    axs[1].title.text = f'{room} temperature'
-    axs[3].title.text = f'{room} power discrepanices'
-    axs[5].title = f'{room} heat loss for element type'
+    axs[ROOM_TEMPERATURE].title.text = f'{room} temperature'
+    axs[POWER_DISCREPANCIES].title.text = f'{room} power discrepanices'
+    axs[HEAT_LOSS_BY_MATERIAL_ROOM].title = f'{room} heat loss for element type'
 
 
 def work_out_energy_use(df):
@@ -441,8 +442,9 @@ def work_out_energy_use(df):
     return f'50th percentile power={subsetsum.quantile(0.5)/1e3:.1f}kW 90th percentile power={subsetsum.quantile(0.9)/1e3:.1f}kW 100th percentile power (max)={subsetsum.quantile(1.0)/1e3:.1f}kW total energy kwh output {kwh_output:.1f} metered {metered:.1f} input {kwh_input:.1f} efficency {100.0*kwh_output/ metered:.0f}%'
 
 room_keys = sorted(data['rooms'].keys())
-room_select = RadioGroup(labels=[str(x) for x in room_keys], active=1, inline=True)
-room = room_keys[room_select.active]
+focus_room = 'Master suite'
+room_select = RadioGroup(labels=[str(x) for x in room_keys], active=room_keys.index(focus_room), inline=True)
+assert room_keys[room_select.active] == focus_room
 
 power_slider =Slider(title='Heat source power', start=2000, end=40000, value=40000)
 air_factor_slider = Slider(title='Air infiltation factor', start=0, end=10, value=0.33, step=0.01)
@@ -488,15 +490,15 @@ for i, material in enumerate(elements):
         element_sliders[material] = Slider(title=f"U value for {material}", start=0, end=3, step=0.05, value=data['element_type'][material]['uvalue'], bar_color=element_colours[i])
         sliders.append(element_sliders[material])
 air_change_sliders = {}
-for i, room in enumerate(room_keys):
-    air_change_sliders[room] = Slider(title=f'Air changes/h {room}', start=0, end=5, step=0.05, value=data['rooms'][room]['air_change_an_hour'], bar_color=room_colours[i])
-    sliders.append(air_change_sliders[room])
+for i, rooml in enumerate(room_keys):
+    air_change_sliders[rooml] = Slider(title=f'Air changes/h {rooml}', start=0, end=5, step=0.05, value=data['rooms'][rooml]['air_change_an_hour'], bar_color=room_colours[i])
+    sliders.append(air_change_sliders[rooml])
 
 real_setpoints_switch = Switch(active=True)
 weather_compensation_switch = Switch(active=False)
 width = Span(dimension="width", line_dash="dashed", line_width=2)
 height = Span(dimension="height", line_dash="dotted", line_width=2)
-df = calculate_data(room, real_temperatures=True)
+df = calculate_data(focus_room, real_temperatures=True)
 energy_text = work_out_energy_use(df)
 axs = []
 
@@ -527,14 +529,14 @@ axs[HEAT_ROOM_AND_METERS].title = 'Heat input per room'
 
 colours = {'external':'blue'}
 colors = linear_cmap(field_name='temperature', palette='Viridis256', low=-5, high=30)
-room = room_keys[room_select.active]
+focus_room = room_keys[room_select.active]
 col = room_colours[room_select.active]
-axs[ROOM_TEMPERATURE].title = f'{room} temperature'
+axs[ROOM_TEMPERATURE].title = f'{focus_room} temperature'
 axs[ROOM_TEMPERATURE].line(x='time', y='temperature',  source= main_ds,  line_width=2, color='blue')
 axs[ROOM_TEMPERATURE].line(x='time', y='simulated_temperature',  source= main_ds,  line_width=2, color='lightgreen')
 axs[ROOM_TEMPERATURE].line(x='time', y='setpoint',  source=main_ds,  line_width=2, color='red')
 axs[ROOM_TEMPERATURE].line(x='time', y='setpoint_lagged',  source=main_ds,  line_width=2, color='pink')
-axs[POWER_DISCREPANCIES].title = f'{room} power discrepanices'
+axs[POWER_DISCREPANCIES].title = f'{focus_room} power discrepanices'
 axs[POWER_DISCREPANCIES].scatter(x='time', y='power_discrepancy',  color=colors, source=main_ds)
 axs[POWER_DISCREPANCIES].legend.location = 'bottom_right'
 axs[POWER_DISCREPANCIES].legend.background_fill_alpha = 0.5
@@ -549,7 +551,7 @@ axs[ROOM_HEAT_GAIN].line(x='time', y='gain_for_room_unbounded', source=main_ds, 
 axs[ROOM_HEAT_GAIN].line(x='time', y='gain_for_room', source=main_ds)
 axs[ROOM_HEAT_GAIN].line(x='time', y='available_radiator_power', source=main_ds, line_color='grey', alpha=0.4)
 axs[HEAT_LOSS_BY_MATERIAL_ROOM].yaxis.axis_label = 'Power'
-axs[HEAT_LOSS_BY_MATERIAL_ROOM].title = f'{room} heat loss for element type'
+axs[HEAT_LOSS_BY_MATERIAL_ROOM].title = f'{focus_room} heat loss for element type'
 axs[HEAT_LOSS_BY_MATERIAL_ROOM].varea_stack(x='time', stackers=[f'room_flow_{k}' for k in elements], source=main_ds, color=element_colours)
 axs[HEAT_LOSS_BY_MATERIAL_ROOM].line(x='time', y='loss_for_room', source=main_ds, color='black', line_width=2)
 axs[FLOW_TEMPERATURE].title = 'Flow temperature'
