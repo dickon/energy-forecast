@@ -424,7 +424,7 @@ def update_data(attr, old, new):
 def set_room_name_in_titles(room):
     axs[ROOM_TEMPERATURE].title.text = f'{room} temperature'
     axs[POWER_DISCREPANCIES].title.text = f'{room} power discrepancies'
-    axs[HEAT_LOSS_BY_MATERIAL_ROOM].title = f'{room} heat loss for element type'
+    axs[HEAT_LOSS_BY_MATERIAL_ROOM].title.text = f'{room} heat loss for element type'
 
 def do_update():
     room = room_keys[room_select.active]
