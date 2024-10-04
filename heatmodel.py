@@ -16,6 +16,7 @@ from bokeh.transform import linear_cmap
 from math import ceil
 import scipy.integrate
 import pytz
+import sys
 
     
 interval_minutes = 10
@@ -157,10 +158,8 @@ def calculate_data_in_period(start_t, end_t, focus_room: str='', verbose: bool =
     If `real_temperatures` is true then use actual historical data on house internal temperatures from influx, otherwise simulate using
     only external temperatue data."""
     temperatures = {}
-    start_t = t = pytz.utc.localize(datetime.fromtimestamp(day_range_slider.value[0]/1000))
-    end_t = pytz.utc.localize(datetime.fromtimestamp(day_range_slider.value[-1]/1000))
     radiator_scales = scale_radiators()
-    
+    t = start_t
     room_records = [ (calculate_room_name_alias(room_name), room_name, room_data) for (room_name, room_data) in data['rooms'].items() ]
 
     cursor = 0
@@ -639,5 +638,11 @@ for switch in [weather_compensation_switch, real_setpoints_switch]:
     switch.on_change('active', update_data)
 
 if __name__ == '__main__':
-    output_file('heatmodel.html')
-    show(layout)
+    if 'render' in sys.argv:
+        output_file('heatmodel.html')
+        show(layout)
+    else:
+        end_t =pytz.utc.localize(datetime.now())
+        start_t =  pytz.utc.localize(datetime.now()) - timedelta(days=1)
+        df = calculate_data_in_period(start_t,end_t, focus_room)
+        print(df)
