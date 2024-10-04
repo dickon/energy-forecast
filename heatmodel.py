@@ -51,6 +51,7 @@ def row_split(elements, count=3):
     return list([row(elements[i*count:(i+1)*count]) for i in range(ceil(len(elements)/count)) ])
 
 site = json.load(open(os.path.expanduser("~/site.json")))
+
 def fetch_house_data() -> HouseData:
     influxConfig = InfluxConfig(**site["influx"])
     client = influxdb_client.InfluxDBClient(
@@ -151,6 +152,10 @@ with open('heatmodel.json', 'r') as f:
     data = json.load(f)
 
 def calculate_data(focus_room: str='', verbose: bool = False, samples: int =1000, real_temperatures:bool =True) -> pd.DataFrame:
+    """ Return a dataframe with lots of columns describing the heating behaviour, spread over a certain number of samples. 
+    
+    If `real_temperatures` is true then use actual historical data on house internal temperatures from influx, otherwise simulate using
+    only external temperatue data."""
     temperatures = {}
     start_t = t = pytz.utc.localize(datetime.fromtimestamp(day_range_slider.value[0]/1000))
     end_t = pytz.utc.localize(datetime.fromtimestamp(day_range_slider.value[-1]/1000))
@@ -249,10 +254,11 @@ def calculate_data(focus_room: str='', verbose: bool = False, samples: int =1000
                     delta = actual_flow - room_net_flow_watts
                     discrepanices[room_name] = delta
                     temperatures[room_name] = realtemp
+                else:
+                    delta = 0
             else:
-                #print('room missing for', room_name)
-                pass
-
+                delta = 0
+            recs.setdefault(f'{room_name}_discrepancy', []).append(delta)
             if verbose:
                 print(f'   Total room net flow={room_net_flow_watts:.0f}W area {room_data['area']:.0f}qm^2 temperature +{temp_change}->{temperatures[room_name]}')
         recs.setdefault('gain_for_room', []).append(rooms_rad_watts[focus_room])
@@ -537,7 +543,10 @@ axs[ROOM_TEMPERATURE].line(x='time', y='temperature',  source= main_ds,  line_wi
 axs[ROOM_TEMPERATURE].line(x='time', y='simulated_temperature',  source= main_ds,  line_width=2, color='lightgreen')
 axs[ROOM_TEMPERATURE].line(x='time', y='setpoint',  source=main_ds,  line_width=2, color='red')
 axs[ROOM_TEMPERATURE].line(x='time', y='setpoint_lagged',  source=main_ds,  line_width=2, color='pink')
-axs[POWER_DISCREPANCIES].scatter(x='time', y='power_discrepancy',  color=colors, source=main_ds)
+axs[POWER_DISCREPANCIES].scatter(x='time', y='power_discrepancy',  color='black', size=3, source=main_ds)
+for i, rooml in enumerate(room_keys):
+    axs[POWER_DISCREPANCIES].scatter(x='time', y=f'{rooml}_discrepancy',  color=room_colours[i], size=1, source=main_ds)
+
 axs[POWER_DISCREPANCIES].legend.location = 'bottom_right'
 axs[POWER_DISCREPANCIES].legend.background_fill_alpha = 0.5
 axs[POWER_DISCREPANCIES].yaxis.axis_label = 'Celsius'
@@ -616,7 +625,7 @@ def do_callback():
             curdoc().remove_timeout_callback(idle_callbacks.pop())
         except ValueError:
             pass
-    idle_callbacks.append( curdoc().add_timeout_callback(do_update, 500))
+    idle_callbacks.append( curdoc().add_timeout_callback(do_update, 100))
 
 for slider in sliders:
     slider.on_change('value', update_data)
