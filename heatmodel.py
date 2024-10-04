@@ -151,7 +151,7 @@ house_data = load_house_data()
 with open('heatmodel.json', 'r') as f:
     data = json.load(f)
 
-def calculate_data(focus_room: str='', verbose: bool = False, samples: int =1000, real_temperatures:bool =True) -> pd.DataFrame:
+def calculate_data_in_period(start_t, end_t, focus_room: str='', verbose: bool = False, samples: int =1000, real_temperatures:bool =True) -> pd.DataFrame:
     """ Return a dataframe with lots of columns describing the heating behaviour, spread over a certain number of samples. 
     
     If `real_temperatures` is true then use actual historical data on house internal temperatures from influx, otherwise simulate using
@@ -290,10 +290,16 @@ def calculate_data(focus_room: str='', verbose: bool = False, samples: int =1000
     else:
         rdf = df
     if real_temperatures:
-        rdf_sim = calculate_data(focus_room, real_temperatures=False)
+        rdf_sim = calculate_data_in_period(start_t, end_t, focus_room, real_temperatures=False)
         rdf['simulated_temperature'] = rdf_sim['temperature']
     rdf['time_str'] = rdf['time'].apply(lambda v: v.strftime('%a %d %b %y %H:%M'))
     return rdf
+
+def calculate_data(focus_room: str='', verbose: bool = False, samples: int =1000, real_temperatures:bool =True) -> pd.DataFrame:
+    start_t = pytz.utc.localize(datetime.fromtimestamp(day_range_slider.value[0]/1000))
+    end_t = pytz.utc.localize(datetime.fromtimestamp(day_range_slider.value[-1]/1000))
+    return calculate_data_in_period(start_t, end_t, focus_room, verbose, samples, real_temperatures)
+
 
 def calculate_radiator_outputs(temperatures, radiator_scales, room_records, satisfaction, flow_t, target_ts, room_flows_watts, timestamp, verbose=False):
     rooms_rad_watts = {}
