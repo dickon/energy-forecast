@@ -15,17 +15,23 @@ def populate(t, usage, actual=True):
     if actual:
         solar_output_w[t] = max(0, usage)
 
-def constrain_time_range(t0: datetime.datetime, t1: datetime.datetime) -> Tuple[datetime.datetime, datetime.datetime]:
+def constrain_time_range(t0: datetime.datetime, t1: datetime.datetime, minute_resolution=30) -> Tuple[datetime.datetime, datetime.datetime]:
     if t1 is None:
         t1 = datetime.datetime.strptime(
             datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S Z"), "%Y-%m-%d %H:%M:%S %z"
         )
-    t0 = t0.replace(minute=0, second=0, microsecond=0)
-    t1 = t1.replace(minute=0, second=0, microsecond=0)
+    t0 -= datetime.timedelta(minutes=t0.minute % minute_resolution,
+        seconds = t0.second,
+        microseconds = t0.microsecond
+    )
+    t1 -= datetime.timedelta(minutes=t1.minute % minute_resolution,
+        seconds = t1.second,
+        microseconds = t1.microsecond
+    )    
     return (t0, t1)
 
-def query_powerwall( trange: Tuple[datetime.datetime, datetime.datetime] ):
-    t0, t1 = trange
+def query_powerwall( trange: Tuple[datetime.datetime, datetime.datetime], minute_resolution=30 ):
+    t0, t1 = constrain_time_range(trange[0], trange[1], minute_resolution)
     prev = None
     prevt = None
     usage_wh_total = 0
@@ -46,7 +52,7 @@ def query_powerwall( trange: Tuple[datetime.datetime, datetime.datetime] ):
         value = res["_value"]
         if prevt:
             deltat = t - prevt
-            if deltat.seconds == 1800:
+            if deltat.seconds == minute_resolution*60:
                 usage_wh = (value - prev) * (3600/deltat.seconds)
                 usage_wh_total += usage_wh
         prevt = t
@@ -66,8 +72,8 @@ def test_constrain():
     
 def test_query_powerwall():
     assert_equal(query_powerwall(
-        constrain_time_range(parse_time('2025-03-28 08:00:00Z'),
-        parse_time('2025-03-28 18:00:00Z')),
+        (parse_time('2025-03-28 08:15:00Z'),
+        parse_time('2025-03-28 18:12:00Z')),
     ), 75954)
 
 if __name__ == '__main__':
