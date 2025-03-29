@@ -3,6 +3,7 @@ import datetime, pprint
 from asserts import assert_equal
 from typing import Tuple, List
 from dateutil.tz import tzutc
+import matplotlib.pyplot as plt
 
 def populate(t, usage, actual=True):
     # if t in overridden and not actual:
@@ -37,11 +38,11 @@ def query_powerwall( trange: Tuple[datetime.datetime, datetime.datetime], minute
     prevt = None
     usage_wh_out = []
     for res in do_query(
-        """
+        f"""
         |> filter(fn: (r) => r["_measurement"] == "energy")
         |> filter(fn: (r) => r["_field"] == "energy_exported")
         |> filter(fn: (r) => r["meter"] == "solar")
-        |> window(every: 30m)
+        |> window(every: {minute_resolution}m)
         |> last()
         |> duplicate(column: "_stop", as: "_time")
         |> window(every: inf) """,
@@ -62,7 +63,6 @@ def query_powerwall( trange: Tuple[datetime.datetime, datetime.datetime], minute
 
 def arrange_by_solar_position(data: List[Tuple[datetime.datetime, float]]):
     out = [ (get_solar_position_index(t), v) for t, v in data]
-    pprint.pprint(out)
     return out
 
 def test_constrain():
@@ -76,7 +76,7 @@ def test_constrain():
 
 def test_constrain_5():
     assert_equal(
-        constrain_time_range(parse_time('2025-03-28 08:15:00Z'),
+        constrain_time_range(parse_time('2023-03-28 08:15:00Z'),
         parse_time('2025-03-28 18:27:00Z'), 5),
          (
              datetime.datetime(2025, 3, 28, 8, 15, tzinfo=datetime.timezone.utc), 
@@ -142,5 +142,30 @@ def test_query_powerwall():
 def test_arranage_by_solar_position():
     assert_equal(arrange_by_solar_position(TEST_GOLDEN_SAMPLE), TEST_POS)    
 
+def cap_values(limit, data):
+    return [ (k, min(v, limit)) for k,v in data]
+
+
+def plot():
+    solar_model_table = arrange_by_solar_position(cap_values(11500, query_powerwall(
+            (parse_time("2025-03-01 08:15:00Z"), None), minute_resolution=5
+        )),)
+    print('solar model table has', len(solar_model_table), 'entries')
+    arrange_by_solar_position(TEST_GOLDEN_SAMPLE)
+    plt.figure(figsize=(12, 8))
+    altitude = [x[0][0] for x in solar_model_table]
+    azimuth = [x[0][1] for x in solar_model_table]
+    pow = [x[1] for x in solar_model_table]
+    p = plt.scatter(azimuth, altitude, [x / 60 for x in pow], pow)
+    plt.ylim([0, 70])
+    plt.xlim((50, 300))
+    plt.title("solar AC output power over 30 minutes")
+    plt.xlabel("azimuth")
+    plt.ylabel("altitude")
+    plt.colorbar()
+    plt.savefig("solar.png")
+    return plt
+
 if __name__ == '__main__':
-    test_query_powerwall()
+    plot()
+
