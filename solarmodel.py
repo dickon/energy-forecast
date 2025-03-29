@@ -80,12 +80,7 @@ def test_constrain_5():
         )
 
 
-def test_query_powerwall():
-    assert_equal(
-        query_powerwall(
-            (parse_time("2025-03-28 08:15:00Z"), parse_time("2025-03-28 18:12:00Z")),
-        ),
-        [
+TEST_GOLDEN_SAMPLE = [
             (datetime.datetime(2025, 3, 28, 9, 0, tzinfo=tzutc()), 808.0),
             (datetime.datetime(2025, 3, 28, 9, 30, tzinfo=tzutc()), 1446.0),
             (datetime.datetime(2025, 3, 28, 10, 0, tzinfo=tzutc()), 2394.0),
@@ -105,7 +100,13 @@ def test_query_powerwall():
             (datetime.datetime(2025, 3, 28, 17, 0, tzinfo=tzutc()), 1984.0),
             (datetime.datetime(2025, 3, 28, 17, 30, tzinfo=tzutc()), 780.0),
             (datetime.datetime(2025, 3, 28, 18, 0, tzinfo=tzutc()), 228.0),
-        ]        
+        ]   
+def test_query_powerwall():
+    assert_equal(
+        query_powerwall(
+            (parse_time("2025-03-28 08:15:00Z"), parse_time("2025-03-28 18:12:00Z")),
+        ),
+       TEST_GOLDEN_SAMPLE
     )
 
 
