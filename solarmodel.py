@@ -1,4 +1,4 @@
-from forecast import parse_time, do_query, get_solar_position_index, EPOCH
+from forecast import parse_time, do_query, get_solar_position_index, EPOCH, SITE
 import datetime, pprint
 from asserts import assert_equal
 from typing import Tuple, List
@@ -147,7 +147,7 @@ def cap_values(limit, data):
 
 
 def plot():
-    solar_model_table = arrange_by_solar_position(cap_values(11500, query_powerwall(
+    solar_model_table = arrange_by_solar_position(cap_values(SITE['solar']['plausible_maximum_power_w'], query_powerwall(
             (parse_time("2025-03-01 08:15:00Z"), None), minute_resolution=5
         )),)
     print('solar model table has', len(solar_model_table), 'entries')
