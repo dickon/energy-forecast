@@ -15,13 +15,14 @@ def populate(t, usage, actual=True):
     if actual:
         solar_output_w[t] = max(0, usage)
 
-def constrain_time_range(t0, t1):
+def constrain_time_range(t0: datetime.datetime, t1: datetime.datetime) -> Tuple[datetime.datetime, datetime.datetime]:
     if t1 is None:
         t1 = datetime.datetime.strptime(
             datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S Z"), "%Y-%m-%d %H:%M:%S %z"
         )
     t0 = t0.replace(minute=0, second=0, microsecond=0)
     t1 = t1.replace(minute=0, second=0, microsecond=0)
+    return (t0, t1)
 
 def query_powerwall( trange: Tuple[datetime.datetime, datetime.datetime] ):
     t0, t1 = trange
@@ -52,9 +53,20 @@ def query_powerwall( trange: Tuple[datetime.datetime, datetime.datetime] ):
         prev = value
     return usage_wh_total
 
+def test_constrain():
+    assert_equal(
+        constrain_time_range(parse_time('2025-03-28 08:00:00Z'),
+        parse_time('2025-03-28 18:00:00Z')), 
+         (
+             datetime.datetime(2025, 3, 28, 8, 0, tzinfo=datetime.timezone.utc), 
+             datetime.datetime(2025, 3, 28, 18, 0, tzinfo=datetime.timezone.utc)
+         )
+    )
+         
+    
 def test_query_powerwall():
     assert_equal(query_powerwall(
-        (parse_time('2025-03-28 08:00:00Z'),
+        constrain_time_range(parse_time('2025-03-28 08:00:00Z'),
         parse_time('2025-03-28 18:00:00Z')),
     ), 75954)
 
