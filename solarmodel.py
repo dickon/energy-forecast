@@ -1,7 +1,7 @@
 from forecast import parse_time, do_query, get_solar_position_index, EPOCH
-import datetime
+import datetime, pprint
 from asserts import assert_equal
-from typing import Tuple
+from typing import Tuple, List
 from dateutil.tz import tzutc
 
 def populate(t, usage, actual=True):
@@ -16,7 +16,7 @@ def populate(t, usage, actual=True):
     if actual:
         solar_output_w[t] = max(0, usage)
 
-def constrain_time_range(t0: datetime.datetime, t1: datetime.datetime, minute_resolution=30) -> Tuple[datetime.datetime, datetime.datetime]:
+def constrain_time_range(t0: datetime.datetime, t1: datetime.datetime, minute_resolution) -> Tuple[datetime.datetime, datetime.datetime]:
     if t1 is None:
         t1 = datetime.datetime.strptime(
             datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S Z"), "%Y-%m-%d %H:%M:%S %z"
@@ -55,15 +55,20 @@ def query_powerwall( trange: Tuple[datetime.datetime, datetime.datetime], minute
             deltat = t - prevt
             if deltat.seconds == minute_resolution*60:
                 usage_wh = (value - prev) * (3600/deltat.seconds)
-                usage_wh_out.append((t, usage_wh))
+                usage_wh_out.append((t+datetime.timedelta(minutes=minute_resolution/2), usage_wh))
         prevt = t
         prev = value
     return usage_wh_out
 
+def arrange_by_solar_position(data: List[Tuple[datetime.datetime, float]]):
+    out = [ (get_solar_position_index(t), v) for t, v in data]
+    pprint.pprint(out)
+    return out
+
 def test_constrain():
     assert_equal(
         constrain_time_range(parse_time('2025-03-28 08:00:00Z'),
-        parse_time('2025-03-28 18:00:00Z')), 
+        parse_time('2025-03-28 18:00:00Z'), 30), 
          (
              datetime.datetime(2025, 3, 28, 8, 0, tzinfo=datetime.timezone.utc), 
              datetime.datetime(2025, 3, 28, 18, 0, tzinfo=datetime.timezone.utc)
@@ -81,26 +86,50 @@ def test_constrain_5():
 
 
 TEST_GOLDEN_SAMPLE = [
-            (datetime.datetime(2025, 3, 28, 9, 0, tzinfo=tzutc()), 808.0),
-            (datetime.datetime(2025, 3, 28, 9, 30, tzinfo=tzutc()), 1446.0),
-            (datetime.datetime(2025, 3, 28, 10, 0, tzinfo=tzutc()), 2394.0),
-            (datetime.datetime(2025, 3, 28, 10, 30, tzinfo=tzutc()), 4144.0),
-            (datetime.datetime(2025, 3, 28, 11, 0, tzinfo=tzutc()), 4554.0),
-            (datetime.datetime(2025, 3, 28, 11, 30, tzinfo=tzutc()), 6952.0),
-            (datetime.datetime(2025, 3, 28, 12, 0, tzinfo=tzutc()), 6014.0),
-            (datetime.datetime(2025, 3, 28, 12, 30, tzinfo=tzutc()), 4998.0),
-            (datetime.datetime(2025, 3, 28, 13, 0, tzinfo=tzutc()), 5860.0),
-            (datetime.datetime(2025, 3, 28, 13, 30, tzinfo=tzutc()), 2928.0),
-            (datetime.datetime(2025, 3, 28, 14, 0, tzinfo=tzutc()), 5198.0),
-            (datetime.datetime(2025, 3, 28, 14, 30, tzinfo=tzutc()), 6622.0),
-            (datetime.datetime(2025, 3, 28, 15, 0, tzinfo=tzutc()), 5302.0),
-            (datetime.datetime(2025, 3, 28, 15, 30, tzinfo=tzutc()), 6562.0),
-            (datetime.datetime(2025, 3, 28, 16, 0, tzinfo=tzutc()), 5114.0),
-            (datetime.datetime(2025, 3, 28, 16, 30, tzinfo=tzutc()), 4066.0),
-            (datetime.datetime(2025, 3, 28, 17, 0, tzinfo=tzutc()), 1984.0),
-            (datetime.datetime(2025, 3, 28, 17, 30, tzinfo=tzutc()), 780.0),
-            (datetime.datetime(2025, 3, 28, 18, 0, tzinfo=tzutc()), 228.0),
-        ]   
+    (datetime.datetime(2025, 3, 28, 9, 15, tzinfo=tzutc()), 808.0),
+    (datetime.datetime(2025, 3, 28, 9, 45, tzinfo=tzutc()), 1446.0),
+    (datetime.datetime(2025, 3, 28, 10, 15, tzinfo=tzutc()), 2394.0),
+    (datetime.datetime(2025, 3, 28, 10, 45, tzinfo=tzutc()), 4144.0),
+    (datetime.datetime(2025, 3, 28, 11, 15, tzinfo=tzutc()), 4554.0),
+    (datetime.datetime(2025, 3, 28, 11, 45, tzinfo=tzutc()), 6952.0),
+    (datetime.datetime(2025, 3, 28, 12, 15, tzinfo=tzutc()), 6014.0),
+    (datetime.datetime(2025, 3, 28, 12, 45, tzinfo=tzutc()), 4998.0),
+    (datetime.datetime(2025, 3, 28, 13, 15, tzinfo=tzutc()), 5860.0),
+    (datetime.datetime(2025, 3, 28, 13, 45, tzinfo=tzutc()), 2928.0),
+    (datetime.datetime(2025, 3, 28, 14, 15, tzinfo=tzutc()), 5198.0),
+    (datetime.datetime(2025, 3, 28, 14, 45, tzinfo=tzutc()), 6622.0),
+    (datetime.datetime(2025, 3, 28, 15, 15, tzinfo=tzutc()), 5302.0),
+    (datetime.datetime(2025, 3, 28, 15, 45, tzinfo=tzutc()), 6562.0),
+    (datetime.datetime(2025, 3, 28, 16, 15, tzinfo=tzutc()), 5114.0),
+    (datetime.datetime(2025, 3, 28, 16, 45, tzinfo=tzutc()), 4066.0),
+    (datetime.datetime(2025, 3, 28, 17, 15, tzinfo=tzutc()), 1984.0),
+    (datetime.datetime(2025, 3, 28, 17, 45, tzinfo=tzutc()), 780.0),
+    (datetime.datetime(2025, 3, 28, 18, 15, tzinfo=tzutc()), 228.0),
+]
+
+TEST_POS = [
+    ((32, 133), 808.0),
+    ((35, 141), 1446.0),
+    ((37, 149), 2394.0),
+    ((39, 159), 4144.0),
+    ((41, 168), 4554.0),
+    ((41, 178), 6952.0),
+    ((41, 188), 6014.0),
+    ((40, 198), 4998.0),
+    ((38, 207), 5860.0),
+    ((36, 216), 2928.0),
+    ((33, 224), 5198.0),
+    ((29, 232), 6622.0),
+    ((26, 239), 5302.0),
+    ((22, 246), 6562.0),
+    ((17, 253), 5114.0),
+    ((13, 259), 4066.0),
+    ((8, 265), 1984.0),
+    ((4, 271), 780.0),
+    ((-1, 277), 228.0),
+]
+
+
 def test_query_powerwall():
     assert_equal(
         query_powerwall(
@@ -109,6 +138,9 @@ def test_query_powerwall():
        TEST_GOLDEN_SAMPLE
     )
 
+
+def test_arranage_by_solar_position():
+    assert_equal(arrange_by_solar_position(TEST_GOLDEN_SAMPLE), TEST_POS)    
 
 if __name__ == '__main__':
     test_query_powerwall()
