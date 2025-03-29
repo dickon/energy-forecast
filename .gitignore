@@ -15,3 +15,8 @@ dailysolar2.png
 forecast.log
 *.pickle
 venv/**
+.powerwall
+__pycache__/forecast.cpython-310.pyc
+__pycache__/hp_cop.cpython-312.pyc
+__pycache__/solarmodel.cpython-310-pytest-7.1.2.pyc
+__pycache__/structures.cpython-312.pyc

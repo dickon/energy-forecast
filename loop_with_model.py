@@ -516,7 +516,7 @@ def model(t, meters):
         time.sleep(st)
     tround = tnext
     tariff = get_tariff(tround, meters)
-
+    print('tariff', tariff)
     # print(f'modelling for {tnext}')
     if tround.hour == 0 and tround.minute == 0:
         charge = tariff.electric_sc + tariff.gas_sc

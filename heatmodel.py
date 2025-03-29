@@ -645,4 +645,6 @@ if __name__ == '__main__':
         end_t =pytz.utc.localize(datetime.now())
         start_t =  pytz.utc.localize(datetime.now()) - timedelta(days=1)
         df = calculate_data_in_period(start_t,end_t, focus_room)
+        with open('recent.html', 'w') as fo:
+            fo.write(df.to_html())
         print(df)
