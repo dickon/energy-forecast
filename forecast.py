@@ -26,15 +26,18 @@ ALTITUDE_RESOLUTION = 1
 
 SITE = json.load(open(os.path.expanduser("~/src/powerwallextract/site.json")))
 
-def parse_time(text):
+def parse_time(tnext):
     return datetime.datetime.strptime(
     tnext, "%Y-%m-%d %H:%M:%S %z"
 ) 
+
+EPOCH = parse_time("1975-01-01 00:00:00 Z")
+
 t0 = datetime.datetime.strptime(
     "2023-01-01 00:00:00 Z", "%Y-%m-%d %H:%M:%S %z"
 )  # start of modelling period
 t1 = datetime.datetime.strptime(
-    "2023-12-31 23:59:00 Z", "%Y-%m-%d %H:%M:%S %z"
+    "2025-02-28 23:59:00 Z", "%Y-%m-%d %H:%M:%S %z"
 )  # end of modelling period
 tnow = datetime.datetime.strptime(
     datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S Z"), "%Y-%m-%d %H:%M:%S %z"
@@ -47,22 +50,7 @@ def parse_time(s):
     except ValueError:
         return datetime.datetime.strptime(s, "%Y-%m-%d %H:%M:%S %z")
 
-overrides = {}
-for bill in SITE["bills"]:
-    bill_start = datetime.datetime.strptime(bill["start"], "%Y-%m-%d").date()
-    bill_end = datetime.datetime.strptime(bill["end"], "%Y-%m-%d").date()
-    num_days = (bill_end - bill_start).days
-    print(bill_start, bill_end, num_days, bill)
-    if bill.get("override_daily"):
-        day = bill_start
-        while day <= bill_end:
-            day += datetime.timedelta(days=1)
-            overrides[(day.month, day.day)] = {
-                "export_kwh": bill["electricity_export_kwh"] / num_days,
-                "import_kwh": bill["electricity_import_kwh"] / num_days,
-            }
 
-EPOCH = parse_time("1975-01-01 00:00:00Z")
 
 
 def time_string(dt):
@@ -84,6 +72,16 @@ def open_influx():
 @cache
 def open_influx_query():
     return open_influx()[1]
+
+def plot_solar_azimuth_altitude_chart(solar_model_table, name = 'solarmodel_filled'):
+    plt.figure(figsize=(12, 8))
+    p = plot_model(solar_model_table)
+    plt.title("solar AC output power over 30 minutes")
+    plt.xlabel("azimuth")
+    plt.ylabel("altitude")
+    plt.colorbar()
+    plt.savefig(name+".png")
+    return plt
 
 
 def do_query(
@@ -241,6 +239,38 @@ def title(message):
     print('='*len(message))
     print
 
+def plot_model(m, verbose=False):
+    if verbose:
+        title('solar model')
+        pprint.pprint(m)
+    altitude = [x[0][0] for x in m]
+    azimuth = [x[0][1] for x in m]
+    pow = [x[1] for x in m]
+    p = plt.scatter(azimuth, altitude, [x / 60 for x in pow], pow)
+    plt.ylim([0, 70])
+    plt.xlim((50, 300))
+    return p
+
+
+
+
+
+
+def plot_solar_times():
+    values = [x for x in solar_output_w.items() if x[1] > 20]
+    plt.figure(figsize=(12, 8))
+    plt.scatter(
+        [t for t, _ in values],
+        [t.hour + t.minute / 60 for t, _ in values],
+        s=[v / 100 for _, v in values],
+        c=[v * 2/1000 for _, v in values],
+    )
+    plt.xlabel("date")
+    plt.ylabel("time of day")
+    plt.colorbar(label='kW')
+    plt.savefig('solartimes.png')
+    print('generated solartimes.png')
+
 def generate_solar_model(verbose=True):
     title('generating solar model')
     bucket = "56new"
@@ -261,7 +291,7 @@ def generate_solar_model(verbose=True):
             tnow,
         ):
         pos = get_solar_position_index(entry['_time'])
-        if verbose:
+        if verbose and False:
             print('cloud',entry, 'sun pos', pos)
         if pos[0] > 0:
             cloud_series.append(entry['_value'])
@@ -295,7 +325,7 @@ def generate_solar_model(verbose=True):
         if t in clear_skies or True:
             solar_pos_table.setdefault(pos, list())
             solar_pos_table[pos].append(max(0, usage))
-            print('populate', repr(t), usage, 'actual=',actual)
+            #print('populate', repr(t), usage, 'actual=',actual)
         if actual:
             solar_output_w[t] = max(0, usage)
 
@@ -330,53 +360,54 @@ def generate_solar_model(verbose=True):
     for res in do_query(
         """
         |> filter(fn: (r) => r["_measurement"] == "energy")
-            |> filter(fn: (r) => r["_field"] == "energy_exported")
-            |> filter(fn: (r) => r["meter"] == "solar")
-                |> window(every: 30m)
-                |> last()
-                |> duplicate(column: "_stop", as: "_time")
-                |> window(every: inf) """,
+        |> filter(fn: (r) => r["_field"] == "energy_exported")
+        |> filter(fn: (r) => r["meter"] == "solar")
+        |> window(every: 30m)
+        |> last()
+        |> duplicate(column: "_stop", as: "_time")
+        |> window(every: inf) """,
         "powerwall",
         EPOCH,
         tnow,
     ):
         t = res["_time"]
         value = res["_value"]
-
         if prevt:
             deltat = t - prevt
+            #print('powerwall', deltat, res)
             if deltat.seconds == 1800:
                 usage = value - prev
-                print('powerwall solar', t, 'usage', usage)
+                #print('powerwall solar', t, 'usage', usage)
                 populate(t, usage)
-            else:
-                print('powerwall solar', t, 'gap', deltat, 'ignored usage', usage)
                 
         prevt = t
         prev = value
-    title("querying vue data")
-    x = 0
-    for res in do_query(
-        """
-            |> filter(fn: (r) => r["_field"] == "usage")
-            |> filter(fn: (r) => r["account_name"] == "Primary Residence")
-            |> filter(fn: (r) => r["detailed"] == "True")
-            |> filter(fn: (r) => r["device_name"] == "SolarEdge Inverter")
-            |> aggregateWindow(every: 30m, fn: mean, createEmpty: false)
-             """,
-        "vue",
-        EPOCH,
-        parse_time(SITE['powerwall']['commission_date']),
-        verbose=False,
-    ):
-        print('vue solar', res['_time'], res['_value'])
-        populate(res["_time"], -res["_value"] / 2)
-        x += 1
+    if 1:
+        title("querying vue data")
+        x = 0
+        for res in do_query(
+            """
+                |> filter(fn: (r) => r["_field"] == "usage")
+                |> filter(fn: (r) => r["account_name"] == "Primary Residence")
+                |> filter(fn: (r) => r["detailed"] == "True")
+                |> filter(fn: (r) => r["device_name"] == "SolarEdge Inverter")
+                |> aggregateWindow(every: 30m, fn: mean, createEmpty: false)
+                """,
+            "vue",
+            EPOCH,
+            parse_time(SITE['powerwall']['commission_date']),
+            verbose=False,
+        ):
+            #print('vue solar', res['_time'], res['_value'])
+            populate(res["_time"], -res["_value"] / 2)
+            x += 1
 
 
     title('filling model')
     
-    solar_pos_model = { k:max(v) for k,v in solar_pos_table.items()}
+    plot_solar_azimuth_altitude_chart(solar_pos_model, name='solar_readings').show()
+
+    solar_pos_model = {k:min(SITE['solar']['plausible_maximum_power_w'], max(v)) for k,v in solar_pos_table.items()}
     originals =solar_pos_model.keys()
     for azi in range(0, 360, AZIMUTH_RESOLUTION):
         print("smoothing azimuth", azi)
@@ -385,61 +416,34 @@ def generate_solar_model(verbose=True):
             pos = (alt, azi)
             if pos in originals:
                 continue
-            print('filling',pos)
-            mindist = None
-            minv = None
-            minpos = None
-            for altpos, altvs in solar_pos_table.items():
-                altv = max(altvs)
-                dist = math.sqrt(
-                    (altpos[0] - pos[0]) ** 2  + (altpos[1] - pos[1]) ** 2
-                )
-                if (mindist is None or dist < mindist):
-                    if verbose:
-                        print('pos',pos,'from',altpos,'dist',dist)
-                    minv = altv
-                    mindist = dist
-                    minpos = altpos
-            if verbose:
-                print('pos', pos, 'mindist',mindist,'minv',minv,'from',minpos)
-            if minv:
-                solar_pos_model[pos] = minv
+            if 1:
+                print('filling',pos)
+                mindist = None
+                minv = None
+                minpos = None
+                for altpos, altvs in solar_pos_table.items():
+                    altv = max(altvs)
+                    dist = math.sqrt(
+                        (altpos[0] - pos[0]) ** 2  + (altpos[1] - pos[1]) ** 2
+                    )
+                    if (mindist is None or dist < mindist):
+                        if verbose:
+                            print('pos',pos,'from',altpos,'dist',dist)
+                        minv = altv
+                        mindist = dist
+                        minpos = altpos
+                if verbose:
+                    print('pos', pos, 'mindist',mindist,'minv',minv,'from',minpos)
+                if minv:
+                    solar_pos_model[pos] = minv
+    plot_solar_azimuth_altitude_chart(solar_pos_model).show()
     record = {
         "solar_pos_model": solar_pos_model,
         "solar_output_w": solar_output_w,
         "clouds": pd.Series(cloud_series, index=cloud_t)
     }
+
     return record
-
-
-txover = datetime.datetime.strptime(
-    SITE["powerwall"]["commission_date"], "%Y-%m-%d %H:%M:%S %z"
-)
-t_solar_export_payments_start = datetime.datetime.strptime(
-    SITE["solar"]["export_payments_start_date"], "%Y-%m-%d %H:%M:%S%z"
-)
-data = memoize("kwh_use_time_of_day.pickle", generate_mean_time_of_day)
-mean_time_of_day = data["mean_time_of_day"]
-
-solar_model_record = memoize(
-    "solar_model.pickle", generate_solar_model, max_age_days=14
-)
-solar_output_w = solar_model_record ['solar_output_w']
-solar_pos_model = solar_model_record["solar_pos_model"]
-solar_model_table = solar_pos_model.items()
-
-if 0:
-    title('solar_output_w')
-    pprint.pprint(solar_output_w)
-
-usage_actual_text = data["usage_actual"]
-usage_actual = {
-    datetime.datetime.fromisoformat(x[0]): x[1] for x in usage_actual_text.items()
-}
-values = [x for x in usage_actual.items()]
-
-if "usage" in sys.argv:
-    plot_usage_scatter()
 
 
 def get_tariffs():
@@ -502,62 +506,7 @@ def get_tariffs():
     return rec
 
 
-tariffs = memoize("tariffs.pickle", get_tariffs)
-agile_incoming_cache = {}
-gas_tariffs_cache = {}
-for outgoing in [True, False]:
-    k = "agile " + ("outgoing" if outgoing else "incoming")
-    for t, value in tariffs[k].items():
-        agile_incoming_cache[(datetime.datetime.fromisoformat(t), outgoing)] = value
-for t, value in tariffs["gas"].items():
-    gas_tariffs_cache[(True, datetime.datetime.fromisoformat(t))] = value
-for t, value in tariffs["gas standing"].items():
-    gas_tariffs_cache[(False, datetime.datetime.fromisoformat(t))] = value
 
-
-def plot_model(m, verbose=False):
-    if verbose:
-        title('solar model')
-        pprint.pprint(m)
-    altitude = [x[0][0] for x in m]
-    azimuth = [x[0][1] for x in m]
-    pow = [x[1] for x in m]
-    p = plt.scatter(azimuth, altitude, [x / 60 for x in pow], pow)
-    plt.ylim([0, 70])
-    plt.xlim((50, 300))
-    return p
-
-def plot_solar_azimuth_altitude_chart(solar_model_table):
-    plt.figure(figsize=(12, 8))
-    p = plot_model(solar_model_table)
-    plt.title("solar AC output power over 30 minutes")
-    plt.xlabel("azimuth")
-    plt.ylabel("altitude")
-    plt.colorbar()
-    plt.savefig("solarmodel.png")
-    return plt
-
-
-plot_solar_azimuth_altitude_chart(solar_model_table).show()
-
-
-
-def plot_solar_times():
-    values = [x for x in solar_output_w.items() if x[1] > 20]
-    plt.figure(figsize=(12, 8))
-    plt.scatter(
-        [t for t, _ in values],
-        [t.hour + t.minute / 60 for t, _ in values],
-        s=[v / 100 for _, v in values],
-        c=[v * 2/1000 for _, v in values],
-    )
-    plt.xlabel("date")
-    plt.ylabel("time of day")
-    plt.colorbar(label='kW')
-    plt.savefig('solartimes.png')
-    print('generated solartimes.png')
-
-plot_solar_times()
 
 def get_daily_gas_use():
     tback = t0
@@ -651,42 +600,6 @@ def get_daily_gas_use():
 
     return out
 
-
-gas_use = memoize("gas.pickle", get_daily_gas_use)
-
-title('gas use')
-pprint.pprint(gas_use)
-
-
-actual_scale = 8860 / 7632
-battery_cost = 0  # take into account batter wear and tear if non-zero, in pounds
-battery_lifetime_wh = 37.8e6 * 2
-battery_size = 28000
-maximum_charge_rate_watts = 10000
-reserve_threshold = 0.25
-battery_efficiency = 0.9
-discharge_threshold = 0.48
-discharge_price_floor = 0.27
-discharge_rate_w = 10000
-battery_cost_per_wh = battery_cost / battery_lifetime_wh
-print(f"battery cost per kwh=£{battery_cost_per_wh*1e3}")
-
-
-def get_agile(t, outgoing=False):
-    y = t.year - 2023
-    if y > 0:
-        markup = SITE["tariffs"]["agile"]["scale"] ** y
-        if t.day == 29 and t.month == 2:
-            t = t.replace(day=28)
-        t = t.replace(year=2023)
-
-    v = agile_incoming_cache.get((t, outgoing))
-    if v is not None:
-        return v * markup
-    print("miss", t, outgoing)
-
-
-usage_model = {t: u for (t, u) in mean_time_of_day}
 
 
 def simulate_tariff(
@@ -894,7 +807,7 @@ def simulate_tariff(
             min_soc = min(soc, min_soc)
             soc = min(battery_size, new_soc)
             assert soc <= battery_size
-            assert soc >= 0
+            assert soc >= 0, (soc, time_of_day)
         soc_daily_lows.append(100.0 * min(soc_daily) / battery_size)
         days.append(tday)
         kwh_days.append(kwh)
@@ -941,7 +854,7 @@ def simulate_tariff(
         "cost_series": pd.DataFrame({name:cost_series}, index=days),
         "days": days,
     }
-final_costs = {}
+
 
 def simulate_tariff_and_store(name, **params):
     results = simulate_tariff(name, **params)
@@ -1335,7 +1248,6 @@ def plot_solar_production():
     print(f'MWh in the last year ={total_wh / 1e6}')
 
 
-plot_solar_production()
 
 def work_out_agile_charge_slots(slots, verbose):
     agile_series = [(get_agile(x), x) for x in slots]
@@ -1475,17 +1387,17 @@ def run_simulations():
     #     saving_sessions_discharge=False,
     #     solar=False
     # )
-    # balance = simulate_tariff_and_store(
-    #     name="actual",
-    #     actual=True,
-    #     verbose=False,
-    #     grid_charge=True,
-    #     start=t0,
-    #     end=tnow,
-    #     grid_discharge=True,
-    #     saving_sessions_discharge=True,
-    #     solar=True,
-    # )
+    balance = simulate_tariff_and_store(
+        name="actual",
+        actual=True,
+        verbose=False,
+        grid_charge=True,
+        start=t0,
+        end=tnow,
+        grid_discharge=True,
+        saving_sessions_discharge=True,
+        solar=True,
+    )
 
 
     title("Current balance")
@@ -1605,9 +1517,118 @@ def run_simulations():
         saving_sessions_discharge=True,
     )
     return RUN_ARCHIVE
-RUN_ARCHIVE = memoize('simulations.pickle', run_simulations, max_age_days=0)
 
-title('final costs recap')
-plot_simulations(RUN_ARCHIVE)
-pprint.pprint(final_costs)
+def get_agile(t, outgoing=False):
+    y = t.year - 2023
+    if y > 0:
+        markup = SITE["tariffs"]["agile"]["scale"] ** y
+        if t.day == 29 and t.month == 2:
+            t = t.replace(day=28)
+        t = t.replace(year=2023)
 
+    v = agile_incoming_cache.get((t, outgoing))
+    if v is not None:
+        return v * markup
+    print("miss", t, outgoing)
+
+
+def run():
+    global mean_time_of_day, overrides
+
+    overrides = {}
+    for bill in SITE["bills"]:
+        bill_start = datetime.datetime.strptime(bill["start"], "%Y-%m-%d").date()
+        bill_end = datetime.datetime.strptime(bill["end"], "%Y-%m-%d").date()
+        num_days = (bill_end - bill_start).days
+        print(bill_start, bill_end, num_days, bill)
+        if bill.get("override_daily"):
+            day = bill_start
+            while day <= bill_end:
+                day += datetime.timedelta(days=1)
+                overrides[(day.month, day.day)] = {
+                    "export_kwh": bill["electricity_export_kwh"] / num_days,
+                    "import_kwh": bill["electricity_import_kwh"] / num_days,
+                }
+    
+    txover = datetime.datetime.strptime(
+        SITE["powerwall"]["commission_date"], "%Y-%m-%d %H:%M:%S %z"
+    )
+    t_solar_export_payments_start = datetime.datetime.strptime(
+        SITE["solar"]["export_payments_start_date"], "%Y-%m-%d %H:%M:%S%z"
+    )
+    data = memoize("kwh_use_time_of_day.pickle", generate_mean_time_of_day, max_age_days=14)
+    mean_time_of_day = data["mean_time_of_day"]
+
+    solar_model_record = memoize(
+        "solar_model.pickle", generate_solar_model, max_age_days=0
+    )
+    solar_output_w = solar_model_record ['solar_output_w']
+    solar_pos_model = solar_model_record["solar_pos_model"]
+    solar_model_table = solar_pos_model.items()
+    assert 0
+
+    if 0:
+        title('solar_output_w')
+        pprint.pprint(solar_output_w)
+
+    usage_actual_text = data["usage_actual"]
+    usage_actual = {
+        datetime.datetime.fromisoformat(x[0]): x[1] for x in usage_actual_text.items()
+    }
+    values = [x for x in usage_actual.items()]
+
+    if "usage" in sys.argv:
+        plot_usage_scatter()
+
+    plot_solar_times()
+
+    tariffs = memoize("tariffs.pickle", get_tariffs)
+    agile_incoming_cache = {}
+    gas_tariffs_cache = {}
+    for outgoing in [True, False]:
+        k = "agile " + ("outgoing" if outgoing else "incoming")
+        for t, value in tariffs[k].items():
+            agile_incoming_cache[(datetime.datetime.fromisoformat(t), outgoing)] = value
+    for t, value in tariffs["gas"].items():
+        gas_tariffs_cache[(True, datetime.datetime.fromisoformat(t))] = value
+    for t, value in tariffs["gas standing"].items():
+        gas_tariffs_cache[(False, datetime.datetime.fromisoformat(t))] = value
+
+
+
+    gas_use = memoize("gas.pickle", get_daily_gas_use)
+
+    title('gas use')
+    pprint.pprint(gas_use)
+
+
+    actual_scale = 8860 / 7632
+    battery_cost = 0  # take into account batter wear and tear if non-zero, in pounds
+    battery_lifetime_wh = 37.8e6 * 2
+    battery_size = 28000
+    maximum_charge_rate_watts = 10000
+    reserve_threshold = 0.25
+    battery_efficiency = 0.9
+    discharge_threshold = 0.48
+    discharge_price_floor = 0.27
+    discharge_rate_w = 10000
+    battery_cost_per_wh = battery_cost / battery_lifetime_wh
+    print(f"battery cost per kwh=£{battery_cost_per_wh*1e3}")
+
+
+
+
+    usage_model = {t: u for (t, u) in mean_time_of_day}
+
+    final_costs = {}
+
+    plot_solar_production()
+
+    RUN_ARCHIVE = memoize('simulations.pickle', run_simulations, max_age_days=0)
+
+    title('final costs recap')
+    plot_simulations(RUN_ARCHIVE)
+    pprint.pprint(final_costs)
+
+if __name__ == '__main__':
+    run()
