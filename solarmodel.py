@@ -66,9 +66,19 @@ def test_constrain():
          (
              datetime.datetime(2025, 3, 28, 8, 0, tzinfo=datetime.timezone.utc), 
              datetime.datetime(2025, 3, 28, 18, 0, tzinfo=datetime.timezone.utc)
+         ))
+
+
+
+def test_constrain_5():
+    assert_equal(
+        constrain_time_range(parse_time('2025-03-28 08:15:00Z'),
+        parse_time('2025-03-28 18:27:00Z'), 5),
+         (
+             datetime.datetime(2025, 3, 28, 8, 15, tzinfo=datetime.timezone.utc), 
+             datetime.datetime(2025, 3, 28, 18, 25, tzinfo=datetime.timezone.utc)
          )
-    )
-         
+        )
     
 def test_query_powerwall():
     assert_equal(query_powerwall(
