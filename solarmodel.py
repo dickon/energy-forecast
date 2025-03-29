@@ -41,7 +41,6 @@ def query_powerwall(t0, t1=None):
         value = res["_value"]
         if prevt:
             deltat = t - prevt
-            #print('powerwall', deltat, res)
             if deltat.seconds == 1800:
                 usage_wh = (value - prev) * (3600/deltat.seconds)
                 usage_wh_total += usage_wh
