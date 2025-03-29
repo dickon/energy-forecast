@@ -1,6 +1,6 @@
 from forecast import parse_time, do_query, get_solar_position_index, EPOCH
 import datetime
-
+from asserts import assert_equal
 def populate(t, usage, actual=True):
     # if t in overridden and not actual:
     #     print('overriden', t, 'usage', usage, 'by', overridden[t])
@@ -18,9 +18,12 @@ def query_powerwall(t0, t1=None):
     if t1 is None:
         t1 = datetime.datetime.strptime(
             datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S Z"), "%Y-%m-%d %H:%M:%S %z"
-        ).replace(minute=0, second=0, microsecond=0)
+        )
+    t0 = t0.replace(minute=0, second=0, microsecond=0)
+    t1 = t1.replace(minute=0, second=0, microsecond=0)
     prev = None
     prevt = None
+    usage_wh_total = 0
     for res in do_query(
         """
         |> filter(fn: (r) => r["_measurement"] == "energy")
@@ -41,13 +44,16 @@ def query_powerwall(t0, t1=None):
             #print('powerwall', deltat, res)
             if deltat.seconds == 1800:
                 usage_wh = (value - prev) * (3600/deltat.seconds)
-                #print('powerwall solar', t, 'usage', usage)
-                print(t, usage_wh)
-                
+                usage_wh_total += usage_wh
         prevt = t
         prev = value
+    return usage_wh_total
 
-query_powerwall(
-    parse_time('2025-03-28 08:00:00Z'),
-    parse_time('2025-03-28 18:00:00Z'),
- )
+def test_query_powerwall():
+    assert_equal(query_powerwall(
+        parse_time('2025-03-28 08:00:00Z'),
+        parse_time('2025-03-28 18:00:00Z'),
+    ), 75954)
+
+if __name__ == '__main__':
+    test_query_powerwall()
