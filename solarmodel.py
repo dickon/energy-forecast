@@ -167,19 +167,30 @@ def plot_png(state, minute_resolution, metadata):
     matplotlib.use('Agg')
     plt.margins(0)
     fig, ax = plt.subplots()
-    p = plt.scatter(azimuth, altitude, 2, pow)
+    plt.subplots_adjust(left=0.05, bottom=0.05, right=0.95, top=0.95)
+
+    p = ax.scatter(azimuth, altitude, 2, pow)
+
+    now = get_now()
+    sunpos_now = get_solar_position_index(now)
+    print('sun pos', repr(sunpos_now))
+    sunpos_now = (150, 30)
+    ax.annotate( now.strftime('%H:%M'), xy=sunpos_now, xycoords='data',  
+                arrowprops = dict(facecolor ='yellow', shrink = 0.15))
     ax.set_ylim([0, 70])
     ax.set_xlim((50, 300))
     ax.set_title(f"solar AC output power over {minute_resolution} minute{'s' if minute_resolution > 1 else ''} latest {metadata.get('latest')}")
     ax.set_xlabel("azimuth")
-    ax.set_ylabel("altitude")
-    ax.annotate( "sun", xy=get_solar_position_index(get_now()))
-    #ax.colorbar()
+    ax.set_ylabel("altitude")    #ax.colorbar()
+    plt.colorbar(p, ax=ax, fraction=0.02, pad=0.0)
+
     output = io.BytesIO()
     plt.savefig(output)
     plt.close()
     global image
     image = output.getvalue()
+    with open('solar.png', 'wb') as o:
+        o.write(image)
     print('image made size', len(image))
     return image
 
