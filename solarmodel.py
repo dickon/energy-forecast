@@ -1,9 +1,15 @@
-from forecast import parse_time, do_query, get_solar_position_index, EPOCH, SITE
-import datetime, pprint
+from forecast import parse_time, do_query, get_solar_position_index, EPOCH, SITE, tnow, get_now
+import datetime, time
 from asserts import assert_equal
 from typing import Tuple, List
 from dateutil.tz import tzutc
 import matplotlib.pyplot as plt
+import matplotlib
+from flask import Flask, Response
+import io
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+from matplotlib.figure import Figure
+import threading
 
 def populate(t, usage, actual=True):
     # if t in overridden and not actual:
@@ -62,7 +68,7 @@ def query_powerwall( trange: Tuple[datetime.datetime, datetime.datetime], minute
     return usage_wh_out
 
 def arrange_by_solar_position(data: List[Tuple[datetime.datetime, float]]):
-    out = [ (get_solar_position_index(t), v) for t, v in data]
+    out = [ (get_solar_position_index(t, None, None), v) for t, v in data]
     return out
 
 def test_constrain():
@@ -145,27 +151,80 @@ def test_arranage_by_solar_position():
 def cap_values(limit, data):
     return [ (k, min(v, limit)) for k,v in data]
 
+def bin_max(data, grid0=None, altitude_resolution=1, azimuth_resolution=1):
+    grid = {} if grid0 is None else grid0
+    for pos, wh in data:
+        pos_round = round(pos[0]/altitude_resolution)*altitude_resolution, round(pos[1]/azimuth_resolution)*azimuth_resolution
+        grid[pos] = max(grid.get(pos, 0), wh)
+    return grid
 
-def plot():
-    solar_model_table = arrange_by_solar_position(cap_values(SITE['solar']['plausible_maximum_power_w'], query_powerwall(
-            (parse_time("2025-03-01 08:15:00Z"), None), minute_resolution=5
-        )),)
-    print('solar model table has', len(solar_model_table), 'entries')
-    arrange_by_solar_position(TEST_GOLDEN_SAMPLE)
-    plt.figure(figsize=(12, 8))
-    altitude = [x[0][0] for x in solar_model_table]
-    azimuth = [x[0][1] for x in solar_model_table]
-    pow = [x[1] for x in solar_model_table]
-    p = plt.scatter(azimuth, altitude, [x / 60 for x in pow], pow)
-    plt.ylim([0, 70])
-    plt.xlim((50, 300))
-    plt.title("solar AC output power over 30 minutes")
-    plt.xlabel("azimuth")
-    plt.ylabel("altitude")
-    plt.colorbar()
-    plt.savefig("solar.png")
-    return plt
+def plot_png(state, minute_resolution, metadata):
+    altitude = [x[0][0] for x in state.items()]
+    azimuth = [x[0][1] for x in state.items()]
+    pow = [x[1] for x in state.items()]
+    
+    #p = plt.scatter(azimuth, altitude, [x / 60 for x in pow], pow)
+    matplotlib.use('Agg')
+    plt.margins(0)
+    fig, ax = plt.subplots()
+    p = plt.scatter(azimuth, altitude, 2, pow)
+    ax.set_ylim([0, 70])
+    ax.set_xlim((50, 300))
+    ax.set_title(f"solar AC output power over {minute_resolution} minute{'s' if minute_resolution > 1 else ''} latest {metadata.get('latest')}")
+    ax.set_xlabel("azimuth")
+    ax.set_ylabel("altitude")
+    ax.annotate( "sun", xy=get_solar_position_index(get_now()))
+    #ax.colorbar()
+    output = io.BytesIO()
+    plt.savefig(output)
+    plt.close()
+    global image
+    image = output.getvalue()
+    print('image made size', len(image))
+    return image
+
+def read(state, minute_resolution, metadata):
+    t = parse_time('2023-08-01 00:00:00Z')
+    while t < tnow:
+        tnext = t + datetime.timedelta(days=1)
+        qdata = query_powerwall((t, tnext), minute_resolution)
+        if qdata:
+            peak = max([ v for _,v in qdata])
+        else:
+            peak = 0
+        bin_max(arrange_by_solar_position(cap_values(SITE['solar']['plausible_maximum_power_w'], qdata)),state, 5, 5)
+        if len(qdata) > 0:
+            t= qdata[-1][0]
+            metadata['latest'] = t
+            
+            delta = tnow - qdata[-1][0]
+            sleep = 3600 if delta < datetime.timedelta(days=1) else 1
+        else:
+            delta = tnext - tnow
+            t = tnext
+            sleep = 0.1
+
+        print(f'{threading.get_ident()} {t} delta {delta} recs {len(qdata)} peak {int(peak)}Wh populated {len(state.keys())} now sleep {sleep}')
+        plot_start = time.time()
+        plot_png(state, minute_resolution, metadata)
+        print(f'\tplot in {time.time() - plot_start}')
+        time.sleep(sleep)
+
+def serve():
+    global image
+    metadata = {}
+    app = Flask(__name__)
+    minute_resolution = 1
+    state = {}
+    data_thread = threading.Thread(target=read, args=(state,minute_resolution, metadata))
+    data_thread.start()
+    image = None
+    @app.route('/')
+    def show_png():        
+        #image = plot_png(state, minute_resolution, metadata)
+        print('image size', len(image))
+        return Response(image, mimetype='image/png')
+    app.run(port=5005)
 
 if __name__ == '__main__':
-    plot()
-
+    serve()

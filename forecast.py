@@ -39,10 +39,12 @@ t0 = datetime.datetime.strptime(
 t1 = datetime.datetime.strptime(
     "2025-02-28 23:59:00 Z", "%Y-%m-%d %H:%M:%S %z"
 )  # end of modelling period
-tnow = datetime.datetime.strptime(
-    datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S Z"), "%Y-%m-%d %H:%M:%S %z"
-).replace(minute=0, second=0, microsecond=0)
+def get_now():
+    return datetime.datetime.strptime(
+        datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S Z"), "%Y-%m-%d %H:%M:%S %z"
+    )
 
+tnow = get_now().replace(minute=0, second=0, microsecond=0)
 
 def parse_time(s):
     try:
@@ -216,7 +218,7 @@ def plot_usage_scatter():
     )
 
 
-def get_solar_position_index(t):
+def get_solar_position_index(t, azimuth_resolution=AZIMUTH_RESOLUTION, altitude_resolution=ALTITUDE_RESOLUTION):
     altitude = pysolar.solar.get_altitude(
         SITE["location"]["latitude"],
         SITE["location"]["longitude"],
@@ -227,10 +229,15 @@ def get_solar_position_index(t):
         SITE["location"]["longitude"],
         t + datetime.timedelta(minutes=15),
     )
-    return ALTITUDE_RESOLUTION * round(
-        altitude / ALTITUDE_RESOLUTION
-    ), AZIMUTH_RESOLUTION * round(azimuth / AZIMUTH_RESOLUTION)
 
+    if altitude_resolution is not None:    
+        altitude = altitude_resolution * round(
+            altitude / altitude_resolution
+        )
+    if azimuth_resolution is not None:
+        azimuth= azimuth_resolution * round(azimuth / azimuth_resolution)
+
+    return altitude, azimuth
 
 def title(message):
     print()
