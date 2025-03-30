@@ -174,7 +174,6 @@ def plot_png(state, minute_resolution, metadata):
     now = get_now()
     sunpos_now = get_solar_position_index(now)
     print('sun pos', repr(sunpos_now))
-    sunpos_now = (150, 30)
     ax.annotate( now.strftime('%H:%M'), xy=sunpos_now, xycoords='data',  
                 arrowprops = dict(facecolor ='yellow', shrink = 0.15))
     ax.set_ylim([0, 70])
